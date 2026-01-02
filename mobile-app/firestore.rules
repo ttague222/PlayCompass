@@ -1,0 +1,77 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- USERS ---
+    // Users can only read/write their own document
+    // Kids are stored as an array inside the user document
+    match /users/{userId} {
+      allow read, write: if request.auth != null
+        && request.auth.uid == userId;
+
+      // Activity history subcollection
+      match /activity_history/{historyId} {
+        allow read, write: if request.auth != null
+          && request.auth.uid == userId;
+      }
+    }
+
+    // --- KIDS (separate collection - optional) ---
+    // If using a separate kids collection instead of embedding in users
+    match /kids/{kidId} {
+      allow read, update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.age is int
+        && request.resource.data.age >= 1
+        && request.resource.data.age <= 18;
+    }
+
+    // --- ACTIVITIES (read-only content dataset) ---
+    // Anyone can read activities, only admin can write
+    match /activities/{activityId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // --- RECOMMENDATION HISTORY ---
+    // Users can only read their own history
+    match /rec_history/{docId} {
+      allow read: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.activityId is string
+        && request.resource.data.action in ['accepted', 'skipped', 'favorited', 'completed'];
+
+      allow update, delete: if false;
+    }
+
+    // --- HISTORY (legacy) ---
+    match /history/{historyId} {
+      allow read, write: if request.auth != null && request.auth.uid == resource.data.userId;
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.userId;
+    }
+
+    // --- SUBSCRIPTIONS ---
+    match /subscriptions/{userId} {
+      allow read: if request.auth != null
+        && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    // --- RATE LIMITS ---
+    match /rate_limits/{docId} {
+      allow read, write: if false;
+    }
+
+    // --- BLOCK EVERYTHING ELSE ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

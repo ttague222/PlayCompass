@@ -1,0 +1,69 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.egg-info/
+__pycache__/
+*.pyc
+.expo/
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+google-services.json
+GoogleService-Info.plist
+serviceAccountKey.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+# Android
+mobile-app/android/.gradle/
+mobile-app/android/app/build/
+mobile-app/android/build/
+*.apk
+*.aab
+
+# iOS
+mobile-app/ios/Pods/
+mobile-app/ios/build/
+*.ipa
+
+# Python
+venv/
+.venv/
+*.egg
+.eggs/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
