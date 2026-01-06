@@ -34,18 +34,33 @@
       "@react-native-firebase/app",
       "@react-native-firebase/auth",
       "@react-native-google-signin/google-signin",
-      "expo-secure-store"
+      "expo-secure-store",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow PlayCompass to use your location for weather-based activity suggestions."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#7c3aed"
+        }
+      ]
     ],
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "490b745a-1b50-4a94-8dee-76ae700fdc38"
       }
     },
     "updates": {
-      "url": "https://u.expo.dev/your-project-id"
+      "url": "https://u.expo.dev/490b745a-1b50-4a94-8dee-76ae700fdc38"
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    }
+    },
+    "owner": "ttague"
   }
 }

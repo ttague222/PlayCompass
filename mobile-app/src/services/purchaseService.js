@@ -5,7 +5,30 @@
  */
 
 import { Platform } from 'react-native';
-import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+
+// Dynamically import RevenueCat to handle cases where native module isn't available
+let Purchases = null;
+let LOG_LEVEL = { VERBOSE: 'VERBOSE', ERROR: 'ERROR' };
+try {
+  const RNPurchases = require('react-native-purchases');
+  Purchases = RNPurchases.default;
+  LOG_LEVEL = RNPurchases.LOG_LEVEL || { VERBOSE: 'VERBOSE', ERROR: 'ERROR' };
+  // Test if native module is actually working by calling a simple method
+  // If the native module isn't linked, this will throw
+  if (Purchases) {
+    try {
+      // Try to access a property that requires native module
+      // If native module is null, methods will fail
+      Purchases.setLogLevel(LOG_LEVEL.ERROR);
+    } catch (testError) {
+      console.warn('[PurchaseService] react-native-purchases native module not working, in-app purchases disabled');
+      Purchases = null;
+    }
+  }
+} catch (e) {
+  console.warn('[PurchaseService] react-native-purchases not available, in-app purchases disabled');
+  Purchases = null;
+}
 
 // RevenueCat API keys
 const REVENUECAT_API_KEYS = {
@@ -32,6 +55,11 @@ let isInitialized = false;
  * Should be called once at app startup
  */
 export const initializePurchases = async () => {
+  if (!Purchases) {
+    console.log('[Purchases] RevenueCat not available (requires development build)');
+    return;
+  }
+
   if (isInitialized) {
     console.log('[Purchases] Already initialized');
     return;
@@ -39,7 +67,17 @@ export const initializePurchases = async () => {
 
   try {
     // Set log level (use DEBUG in development, ERROR in production)
-    Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.VERBOSE : LOG_LEVEL.ERROR);
+    // This might fail if native module isn't properly linked
+    if (typeof Purchases.setLogLevel === 'function') {
+      try {
+        Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.VERBOSE : LOG_LEVEL.ERROR);
+      } catch (logError) {
+        // setLogLevel failed - native module not available
+        console.warn('[Purchases] setLogLevel failed, disabling purchases:', logError.message);
+        Purchases = null;
+        return;
+      }
+    }
 
     // Configure with platform-specific API key
     const apiKey = Platform.OS === 'ios'
@@ -51,7 +89,9 @@ export const initializePurchases = async () => {
     console.log('[Purchases] RevenueCat initialized successfully');
   } catch (error) {
     console.error('[Purchases] Failed to initialize RevenueCat:', error);
-    throw error;
+    // Mark Purchases as unavailable so we don't keep retrying
+    Purchases = null;
+    // Don't throw - allow app to continue without purchases
   }
 };
 
@@ -60,12 +100,16 @@ export const initializePurchases = async () => {
  * @param {string} userId - Firebase user ID
  */
 export const setUserId = async (userId) => {
+  if (!Purchases) return;
+
   try {
     if (!isInitialized) {
       await initializePurchases();
     }
-    await Purchases.logIn(userId);
-    console.log('[Purchases] User ID set:', userId);
+    if (isInitialized) {
+      await Purchases.logIn(userId);
+      console.log('[Purchases] User ID set:', userId);
+    }
   } catch (error) {
     console.error('[Purchases] Failed to set user ID:', error);
   }
@@ -75,6 +119,8 @@ export const setUserId = async (userId) => {
  * Clear user ID on logout
  */
 export const clearUserId = async () => {
+  if (!Purchases || !isInitialized) return;
+
   try {
     await Purchases.logOut();
     console.log('[Purchases] User logged out from RevenueCat');
@@ -88,10 +134,13 @@ export const clearUserId = async () => {
  * @returns {Promise<Array>} Array of available packages
  */
 export const getOfferings = async () => {
+  if (!Purchases) return [];
+
   try {
     if (!isInitialized) {
       await initializePurchases();
     }
+    if (!isInitialized) return [];
 
     const offerings = await Purchases.getOfferings();
 
@@ -114,9 +163,16 @@ export const getOfferings = async () => {
  * @returns {Promise<Object>} Purchase result
  */
 export const purchasePackage = async (pkg) => {
+  if (!Purchases) {
+    return { success: false, error: 'Purchases not available. Rebuild the app to enable.' };
+  }
+
   try {
     if (!isInitialized) {
       await initializePurchases();
+    }
+    if (!isInitialized) {
+      return { success: false, error: 'Purchases not initialized' };
     }
 
     const { customerInfo } = await Purchases.purchasePackage(pkg);
@@ -146,9 +202,16 @@ export const purchasePackage = async (pkg) => {
  * @returns {Promise<Object>} Restore result
  */
 export const restorePurchases = async () => {
+  if (!Purchases) {
+    return { success: false, tier: 'free', error: 'Purchases not available' };
+  }
+
   try {
     if (!isInitialized) {
       await initializePurchases();
+    }
+    if (!isInitialized) {
+      return { success: false, tier: 'free', error: 'Purchases not initialized' };
     }
 
     const customerInfo = await Purchases.restorePurchases();
@@ -172,9 +235,16 @@ export const restorePurchases = async () => {
  * @returns {Promise<Object>} Current subscription info
  */
 export const getSubscriptionStatus = async () => {
+  if (!Purchases) {
+    return { tier: 'free', isActive: false, isTrialPeriod: false };
+  }
+
   try {
     if (!isInitialized) {
       await initializePurchases();
+    }
+    if (!isInitialized) {
+      return { tier: 'free', isActive: false, isTrialPeriod: false };
     }
 
     const customerInfo = await Purchases.getCustomerInfo();
@@ -259,6 +329,11 @@ export const hasActiveSubscription = async () => {
  * @returns {Function} Unsubscribe function
  */
 export const addCustomerInfoListener = (callback) => {
+  if (!Purchases || !isInitialized) {
+    // Return a no-op unsubscribe function
+    return () => {};
+  }
+
   const listener = Purchases.addCustomerInfoUpdateListener((customerInfo) => {
     const tier = getTierFromCustomerInfo(customerInfo);
     callback({ tier, customerInfo });

@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext';
 import {
   SUBSCRIPTION_TIERS,
   getSubscriptionStatus,
+  getTrialStatus,
   canGetRecommendations,
   canAddKid,
   isCategoryAvailable,
@@ -30,12 +31,16 @@ import {
 
 const SubscriptionContext = createContext(null);
 
+// Trial tier - users get 'plus' features during trial
+const TRIAL_TIER = 'plus';
+
 export const SubscriptionProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
   const [subscription, setSubscription] = useState({
     tier: 'free',
-    isTrialPeriod: false,
-    trialEndsAt: null,
+    isInTrial: false,
+    daysRemaining: 0,
+    trialExpired: false,
   });
   const [loading, setLoading] = useState(true);
   const [usage, setUsage] = useState(null);
@@ -55,35 +60,56 @@ export const SubscriptionProvider = ({ children }) => {
           console.log('[Subscription] Failed to set purchase user ID:', error);
         }
 
+        // Track the determined tier for usage loading
+        let determinedTier = 'free';
+
         // Try to get subscription from RevenueCat first
         try {
           const purchaseStatus = await getPurchaseStatus();
           if (purchaseStatus.tier !== 'free') {
             // User has active subscription via RevenueCat
+            determinedTier = purchaseStatus.tier;
             setSubscription({
               tier: purchaseStatus.tier,
               expiresAt: purchaseStatus.expiresAt,
-              isTrialPeriod: purchaseStatus.isTrialPeriod || false,
-              trialEndsAt: purchaseStatus.trialEndsAt,
+              isInTrial: false,
+              daysRemaining: 0,
               source: 'revenuecat',
             });
 
             // Sync to Firestore
             await updateSubscription(user.uid, purchaseStatus.tier, {
               expiresAt: purchaseStatus.expiresAt,
-              isTrialPeriod: purchaseStatus.isTrialPeriod,
               platform: 'revenuecat',
             });
           } else {
-            // Fall back to Firestore status
+            // Fall back to Firestore status (includes trial info)
             const status = await getSubscriptionStatus(user.uid);
-            setSubscription({ ...status, isTrialPeriod: false, trialEndsAt: null });
+            console.log('[Subscription] Firestore status:', status);
+            determinedTier = status.tier || 'free';
+            setSubscription({
+              tier: status.tier || 'free',
+              isInTrial: status.isInTrial || false,
+              daysRemaining: status.daysRemaining || 0,
+              trialExpired: status.trialExpired || false,
+              trialEndDate: status.trialEndDate,
+              source: 'firestore',
+            });
           }
         } catch (error) {
           // RevenueCat failed, fall back to Firestore
           console.log('[Subscription] RevenueCat check failed, using Firestore:', error);
           const status = await getSubscriptionStatus(user.uid);
-          setSubscription({ ...status, isTrialPeriod: false, trialEndsAt: null });
+          console.log('[Subscription] Firestore status (fallback):', status);
+          determinedTier = status.tier || 'free';
+          setSubscription({
+            tier: status.tier || 'free',
+            isInTrial: status.isInTrial || false,
+            daysRemaining: status.daysRemaining || 0,
+            trialExpired: status.trialExpired || false,
+            trialEndDate: status.trialEndDate,
+            source: 'firestore',
+          });
         }
 
         // Load available offerings
@@ -94,8 +120,8 @@ export const SubscriptionProvider = ({ children }) => {
           console.log('[Subscription] Failed to load offerings:', error);
         }
 
-        // Load current usage
-        const recommendationCheck = await canGetRecommendations(subscription.tier);
+        // Load current usage with the determined tier
+        const recommendationCheck = await canGetRecommendations(determinedTier);
         setUsage({
           recommendations: recommendationCheck,
         });
@@ -136,50 +162,53 @@ export const SubscriptionProvider = ({ children }) => {
     return unsubscribe;
   }, [user?.uid]);
 
-  // Get current tier config
-  const tierConfig = SUBSCRIPTION_TIERS[subscription.tier] || SUBSCRIPTION_TIERS.free;
+  // Effective tier: use TRIAL_TIER if in trial, otherwise actual tier
+  const effectiveTier = subscription.isInTrial ? TRIAL_TIER : subscription.tier;
 
-  // Check if user can use a feature
+  // Get current tier config (based on effective tier for features)
+  const tierConfig = SUBSCRIPTION_TIERS[effectiveTier] || SUBSCRIPTION_TIERS.free;
+
+  // Check if user can use a feature (uses effective tier)
   const checkFeature = useCallback(
     (feature) => {
-      return isFeatureAvailable(feature, subscription.tier);
+      return isFeatureAvailable(feature, effectiveTier);
     },
-    [subscription.tier]
+    [effectiveTier]
   );
 
-  // Check if user can add more kids
+  // Check if user can add more kids (uses effective tier)
   const checkCanAddKid = useCallback(
     (currentKidCount) => {
-      return canAddKid(currentKidCount, subscription.tier);
+      return canAddKid(currentKidCount, effectiveTier);
     },
-    [subscription.tier]
+    [effectiveTier]
   );
 
-  // Check if user can get more recommendations
+  // Check if user can get more recommendations (uses effective tier)
   const checkCanGetRecommendations = useCallback(async () => {
-    const result = await canGetRecommendations(subscription.tier);
+    const result = await canGetRecommendations(effectiveTier);
     setUsage((prev) => ({ ...prev, recommendations: result }));
     return result;
-  }, [subscription.tier]);
+  }, [effectiveTier]);
 
   // Record a recommendation session
   const recordRecommendationUsage = useCallback(async () => {
     await incrementRecommendationUsage();
     // Refresh usage
-    const result = await canGetRecommendations(subscription.tier);
+    const result = await canGetRecommendations(effectiveTier);
     setUsage((prev) => ({ ...prev, recommendations: result }));
     return result;
-  }, [subscription.tier]);
+  }, [effectiveTier]);
 
-  // Check if category is available
+  // Check if category is available (uses effective tier)
   const checkCategory = useCallback(
     (category) => {
-      return isCategoryAvailable(category, subscription.tier);
+      return isCategoryAvailable(category, effectiveTier);
     },
-    [subscription.tier]
+    [effectiveTier]
   );
 
-  // Get upgrade suggestion
+  // Get upgrade suggestion (uses actual tier, not effective)
   const getSuggestion = useCallback(
     (blockedFeature) => {
       return getUpgradeSuggestion(blockedFeature, subscription.tier);
@@ -316,10 +345,13 @@ export const SubscriptionProvider = ({ children }) => {
     // Subscription state
     subscription,
     tier: subscription.tier,
+    effectiveTier, // The tier used for feature access (plus during trial)
     tierConfig,
-    isPremium: subscription.tier !== 'free',
-    isTrialPeriod: subscription.isTrialPeriod || false,
-    trialEndsAt: subscription.trialEndsAt,
+    isPremium: effectiveTier !== 'free', // Premium if paid OR in trial
+    isInTrial: subscription.isInTrial || false,
+    daysRemaining: subscription.daysRemaining || 0,
+    trialExpired: subscription.trialExpired || false,
+    trialEndDate: subscription.trialEndDate,
     loading,
     purchaseLoading,
     usage,
@@ -327,6 +359,7 @@ export const SubscriptionProvider = ({ children }) => {
 
     // Feature checks
     checkFeature,
+    hasFeature: checkFeature, // Alias for convenience
     checkCanAddKid,
     checkCanGetRecommendations,
     checkCategory,

@@ -23,8 +23,14 @@ import TimeSelectScreen from '../screens/TimeSelectScreen';
 import RecommendationScreen from '../screens/RecommendationScreen';
 import AcceptedActivitiesScreen from '../screens/AcceptedActivitiesScreen';
 import ActivityDetailScreen from '../screens/ActivityDetailScreen';
-import HistoryScreen from '../screens/HistoryScreen';
+import SavedActivitiesScreen from '../screens/SavedActivitiesScreen';
 import SubscriptionScreen from '../screens/SubscriptionScreen';
+import ScheduleScreen from '../screens/ScheduleScreen';
+import ProgressScreen from '../screens/ProgressScreen';
+import PreferencesScreen from '../screens/PreferencesScreen';
+import FamilyScreen from '../screens/FamilyScreen';
+import AccessibilityScreen from '../screens/AccessibilityScreen';
+import CustomActivitiesScreen from '../screens/CustomActivitiesScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -71,8 +77,8 @@ const MainStack = () => {
         options={{ animation: 'slide_from_right' }}
       />
       <Stack.Screen
-        name="History"
-        component={HistoryScreen}
+        name="SavedActivities"
+        component={SavedActivitiesScreen}
         options={{ animation: 'slide_from_right' }}
       />
       <Stack.Screen
@@ -83,6 +89,36 @@ const MainStack = () => {
       <Stack.Screen
         name="Subscription"
         component={SubscriptionScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="Schedule"
+        component={ScheduleScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="Progress"
+        component={ProgressScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="Preferences"
+        component={PreferencesScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="Family"
+        component={FamilyScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="Accessibility"
+        component={AccessibilityScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="CustomActivities"
+        component={CustomActivitiesScreen}
         options={{ animation: 'slide_from_right' }}
       />
 

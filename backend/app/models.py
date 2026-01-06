@@ -58,6 +58,22 @@ class Materials(str, Enum):
     SPECIAL = "special"
 
 
+class Season(str, Enum):
+    SPRING = "spring"
+    SUMMER = "summer"
+    FALL = "fall"
+    WINTER = "winter"
+    ANY = "any"
+
+
+class WeatherCondition(str, Enum):
+    SUNNY = "sunny"
+    CLOUDY = "cloudy"
+    RAINY = "rainy"
+    SNOWY = "snowy"
+    ANY = "any"
+
+
 # Request/Response Models
 class Kid(BaseModel):
     """Child profile for recommendation context."""
@@ -74,6 +90,10 @@ class RecommendationRequest(BaseModel):
     duration: Duration
     location: Optional[Location] = Location.BOTH
     energy: Optional[EnergyLevel] = None
+    materials: Optional[str] = None  # 'none', 'basic', or 'any' (null = any)
+    season: Optional[str] = None  # spring/summer/fall/winter or 'current' for auto-detect
+    weather: Optional[str] = None  # sunny/cloudy/rainy/snowy for weather-aware filtering
+    subscription_tier: Optional[str] = "free"  # User's subscription tier
     excluded_activity_ids: list[str] = []
     count: int = Field(default=10, ge=1, le=20)
 
@@ -94,6 +114,9 @@ class Activity(BaseModel):
     interests: list[str] = []
     tags: list[str] = []
     weather: Optional[str] = None
+    season: Optional[str] = "any"  # Season when activity is best suited
+    weather_conditions: list[str] = []  # Weather conditions suitable for activity
+    premium: bool = False  # Whether activity requires premium subscription
     instructions: list[str] = []
     tips: list[str] = []
     variations: list[str] = []

@@ -79,6 +79,15 @@ export const WEATHER = {
   SNOWY: { id: 'snowy', label: 'Snow activities' },
 };
 
+// Seasons for seasonal activities
+export const SEASONS = {
+  ANY: { id: 'any', label: 'Any Season', emoji: '🗓️' },
+  SPRING: { id: 'spring', label: 'Spring', emoji: '🌸' },
+  SUMMER: { id: 'summer', label: 'Summer', emoji: '☀️' },
+  FALL: { id: 'fall', label: 'Fall', emoji: '🍂' },
+  WINTER: { id: 'winter', label: 'Winter', emoji: '❄️' },
+};
+
 // Mess level - how messy does this activity get?
 export const MESS_LEVELS = {
   NONE: { id: 'none', label: 'No mess', emoji: '✨' },
@@ -125,6 +134,7 @@ export const CONTEXTS = {
  * @property {string[]} interests - Related interest IDs (from kidsService)
  * @property {string[]} tags - Additional searchable tags
  * @property {string} [weather] - Weather requirement (outdoor only)
+ * @property {string} [season] - Best season for activity (any/spring/summer/fall/winter)
  * @property {string} [messLevel] - How messy (none/low/messy)
  * @property {string} [setupTime] - Setup time (instant/quick/some_prep)
  * @property {string[]} [contexts] - Situational context tags
@@ -151,6 +161,7 @@ export const createActivity = ({
   interests = [],
   tags = [],
   weather = 'any',
+  season = 'any',
   messLevel = 'none',
   setupTime = 'instant',
   contexts = [],
@@ -174,6 +185,7 @@ export const createActivity = ({
   interests,
   tags,
   weather,
+  season,
   messLevel,
   setupTime,
   contexts,
@@ -193,6 +205,7 @@ export default {
   MATERIALS,
   PARTICIPANTS,
   WEATHER,
+  SEASONS,
   MESS_LEVELS,
   SETUP_TIMES,
   CONTEXTS,

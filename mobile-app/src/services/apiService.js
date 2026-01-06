@@ -143,6 +143,10 @@ export const getApiInfo = async () => {
  * @param {string} params.duration - Duration ID (quick, short, medium, long, extended)
  * @param {string} [params.location] - Location preference (indoor, outdoor, both)
  * @param {string} [params.energy] - Energy level (low, medium, high)
+ * @param {string} [params.materials] - Materials filter (none, basic, any)
+ * @param {string} [params.season] - Season filter (spring, summer, fall, winter, current)
+ * @param {string} [params.weather] - Current weather (sunny, cloudy, rainy, snowy)
+ * @param {string} [params.subscriptionTier] - User's subscription tier (free, plus, family)
  * @param {Array} [params.excludedActivityIds] - Activity IDs to exclude
  * @param {number} [params.count] - Number of recommendations (default 10)
  */
@@ -151,6 +155,10 @@ export const getRecommendations = async ({
   duration,
   location = 'both',
   energy = null,
+  materials = null,
+  season = null,
+  weather = null,
+  subscriptionTier = 'free',
   excludedActivityIds = [],
   count = 10,
 }) => {
@@ -167,6 +175,10 @@ export const getRecommendations = async ({
       duration,
       location,
       energy,
+      materials,
+      season,
+      weather,
+      subscription_tier: subscriptionTier,
       excluded_activity_ids: excludedActivityIds,
       count,
     }),

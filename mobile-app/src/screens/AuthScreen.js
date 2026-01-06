@@ -17,8 +17,15 @@ import {
   Image,
   Dimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuth } from '../context/AuthContext';
+
+// Dynamically import LinearGradient to handle cases where native module isn't available
+let LinearGradient = null;
+try {
+  LinearGradient = require('expo-linear-gradient').LinearGradient;
+} catch (e) {
+  console.warn('[AuthScreen] expo-linear-gradient not available, using fallback');
+}
 import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -70,12 +77,8 @@ const AuthScreen = () => {
     setSigningIn(null);
   };
 
-  return (
-    <LinearGradient
-      colors={isDark ? ['#1A1F1E', '#252A29', '#2F3534'] : ['#FFFDF8', '#EDE7E1', '#D4CFC9']}
-      style={styles.container}
-    >
-      <SafeAreaView style={styles.safeArea}>
+  const containerContent = (
+    <SafeAreaView style={styles.safeArea}>
         <View style={styles.content}>
           {/* Logo & Branding */}
           <View style={styles.brandingSection}>
@@ -137,21 +140,34 @@ const AuthScreen = () => {
               disabled={loading}
               activeOpacity={0.8}
             >
-              <LinearGradient
-                colors={gradients.primary}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.anonymousGradient}
-              >
-                {signingIn === 'anonymous' ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <>
-                    <Text style={styles.anonymousIcon}>🚀</Text>
-                    <Text style={styles.anonymousButtonText}>Quick Start</Text>
-                  </>
-                )}
-              </LinearGradient>
+              {LinearGradient ? (
+                <LinearGradient
+                  colors={gradients.primary}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.anonymousGradient}
+                >
+                  {signingIn === 'anonymous' ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Text style={styles.anonymousIcon}>🚀</Text>
+                      <Text style={styles.anonymousButtonText}>Quick Start</Text>
+                    </>
+                  )}
+                </LinearGradient>
+              ) : (
+                <View style={[styles.anonymousGradient, { backgroundColor: gradients.primary?.[0] || '#7c3aed' }]}>
+                  {signingIn === 'anonymous' ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Text style={styles.anonymousIcon}>🚀</Text>
+                      <Text style={styles.anonymousButtonText}>Quick Start</Text>
+                    </>
+                  )}
+                </View>
+              )}
             </TouchableOpacity>
 
             <Text style={[styles.quickStartHint, dynamicStyles.hintText]}>
@@ -174,7 +190,23 @@ const AuthScreen = () => {
           </View>
         </View>
       </SafeAreaView>
-    </LinearGradient>
+  );
+
+  if (LinearGradient) {
+    return (
+      <LinearGradient
+        colors={isDark ? ['#1A1F1E', '#252A29', '#2F3534'] : ['#FFFDF8', '#EDE7E1', '#D4CFC9']}
+        style={styles.container}
+      >
+        {containerContent}
+      </LinearGradient>
+    );
+  }
+
+  return (
+    <View style={[styles.container, { backgroundColor: isDark ? '#1A1F1E' : '#FFFDF8' }]}>
+      {containerContent}
+    </View>
   );
 };
 

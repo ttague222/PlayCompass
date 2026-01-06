@@ -4,6 +4,7 @@ PlayCompass Backend API
 FastAPI application for activity recommendations.
 """
 
+import logging
 from datetime import datetime
 from typing import Optional
 
@@ -11,7 +12,19 @@ from fastapi import FastAPI, HTTPException, Depends, Header, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+# Sentry imports - uncomment when ready to use
+# import sentry_sdk
+# from sentry_sdk.integrations.fastapi import FastApiIntegration
+# from sentry_sdk.integrations.starlette import StarletteIntegration
+
 from .config import get_settings, Settings
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 from .firebase import get_user_from_token, get_firestore_client
 from .models import (
     RecommendationRequest,
@@ -44,6 +57,20 @@ app = FastAPI(
 
 # Get settings
 settings = get_settings()
+
+# Sentry error tracking - uncomment when ready to use
+# if settings.sentry_dsn:
+#     sentry_sdk.init(
+#         dsn=settings.sentry_dsn,
+#         environment=settings.sentry_environment,
+#         integrations=[
+#             StarletteIntegration(transaction_style="endpoint"),
+#             FastApiIntegration(transaction_style="endpoint"),
+#         ],
+#         traces_sample_rate=0.1,
+#         send_default_pii=False,
+#     )
+#     logger.info("Sentry initialized for error tracking")
 
 # Configure CORS
 app.add_middleware(

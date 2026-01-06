@@ -33,6 +33,7 @@ import {
   getExcludedActivityIds,
   getLearningMessage,
 } from '../services/preferenceLearningService';
+import { getActivityWeatherTag, isActivitySuitableForWeather } from '../services/weatherService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
@@ -60,12 +61,76 @@ const hashString = (str) => {
   return Math.abs(hash);
 };
 
+// Map age to age group for matching
+const getAgeGroup = (age) => {
+  if (age >= 1 && age <= 3) return 'toddler';
+  if (age >= 4 && age <= 5) return 'preschool';
+  if (age >= 6 && age <= 8) return 'early_elementary';
+  if (age >= 9 && age <= 11) return 'late_elementary';
+  if (age >= 12 && age <= 14) return 'middle_school';
+  if (age >= 15 && age <= 18) return 'high_school';
+  return 'early_elementary'; // fallback
+};
+
+// Get kids that match the activity's age groups
+const getMatchingKids = (activity, kids) => {
+  const activityAgeGroups = activity.age_groups || activity.ageGroups || [];
+  return kids.filter(kid => {
+    const kidAgeGroup = getAgeGroup(kid.age);
+    return activityAgeGroups.includes(kidAgeGroup);
+  });
+};
+
+// Format kid names naturally (e.g., "Rylee", "Rylee and Kassidy", "Rylee, Kassidy, and Sam")
+const formatKidNames = (kids) => {
+  if (kids.length === 0) return '';
+  if (kids.length === 1) return kids[0].name;
+  if (kids.length === 2) return `${kids[0].name} and ${kids[1].name}`;
+  const lastKid = kids[kids.length - 1];
+  const otherKids = kids.slice(0, -1).map(k => k.name).join(', ');
+  return `${otherKids}, and ${lastKid.name}`;
+};
+
+// Get season color for badges
+const getSeasonColor = (season) => {
+  switch (season) {
+    case 'spring': return '#22c55e'; // Green
+    case 'summer': return '#f59e0b'; // Amber
+    case 'fall': return '#ea580c'; // Orange
+    case 'winter': return '#3b82f6'; // Blue
+    default: return '#6b7280'; // Gray
+  }
+};
+
+// Get season emoji for badges
+const getSeasonEmoji = (season) => {
+  switch (season) {
+    case 'spring': return '🌸';
+    case 'summer': return '☀️';
+    case 'fall': return '🍂';
+    case 'winter': return '❄️';
+    default: return '📅';
+  }
+};
+
 // Generate a personalized, compelling reason for why this activity fits
 const getPersonalizedReason = (activity, kids) => {
   if (!kids || kids.length === 0) return '';
 
-  const kid = kids[0]; // Primary kid for personalization
-  const kidName = kid.name;
+  // Find which kids this activity is suitable for based on age groups
+  const matchingKids = getMatchingKids(activity, kids);
+
+  // If no kids match (shouldn't happen with new filtering), fall back to all kids
+  const relevantKids = matchingKids.length > 0 ? matchingKids : kids;
+
+  // Use first matching kid for interest-based personalization
+  const kid = relevantKids[0];
+  const isMultipleKids = relevantKids.length > 1;
+  const kidName = relevantKids.length === 1
+    ? kid.name
+    : relevantKids.length === kids.length
+      ? (kids.length === 2 ? 'Both kids' : 'all the kids')
+      : formatKidNames(relevantKids);
   const category = activity.category?.toLowerCase();
   const energy = activity.energy?.toLowerCase();
   const location = activity.location?.toLowerCase();
@@ -78,7 +143,8 @@ const getPersonalizedReason = (activity, kids) => {
   const matchingInterest = kid.interests?.find(i => relatedInterests.includes(i));
 
   // TIER 1: Interest-based personalization (strongest connection)
-  if (matchingInterest) {
+  // Only use for single kid - multi-kid templates are simpler
+  if (matchingInterest && !isMultipleKids) {
     const interestTemplates = {
       sports: [
         `${kidName} will love burning energy with this`,
@@ -184,8 +250,9 @@ const getPersonalizedReason = (activity, kids) => {
     }
   }
 
-  // TIER 2: Category-based personalization (covers ALL categories)
-  const categoryTemplates = {
+  // TIER 2: Category-based personalization
+  // Use different templates for single kid vs multiple kids
+  const singleKidTemplates = {
     active: [
       `Great for getting ${kidName} moving`,
       `${kidName} will love the energy of this`,
@@ -252,51 +319,148 @@ const getPersonalizedReason = (activity, kids) => {
     ],
   };
 
+  const multiKidTemplates = {
+    active: [
+      `Great for getting ${kidName} moving together`,
+      `${kidName} will love the energy of this`,
+      `A fun way to keep ${kidName} active`,
+      `Perfect when ${kidName} need to burn energy`,
+      `${kidName} will enjoy this active play`,
+      `Gets ${kidName} up and moving`,
+    ],
+    creative: [
+      `A creative adventure ${kidName} can share`,
+      `${kidName} can let their imaginations run free`,
+      `${kidName} can create something special together`,
+      `A fun way for ${kidName} to express ideas`,
+      `${kidName} will enjoy making something together`,
+      `Creativity time for ${kidName}`,
+    ],
+    educational: [
+      `${kidName} will learn while having fun together`,
+      `A discovery moment ${kidName} can share`,
+      `${kidName} will pick up something new`,
+      `Fun learning awaits ${kidName}`,
+      `${kidName} will enjoy exploring this together`,
+      `A brain boost for ${kidName}`,
+    ],
+    social: [
+      `Quality time for ${kidName} together`,
+      `${kidName} will enjoy doing this together`,
+      `A bonding moment for ${kidName}`,
+      `Great for ${kidName} to do as a team`,
+      `${kidName} will love this together`,
+      `Togetherness time for ${kidName}`,
+    ],
+    calm: [
+      `A peaceful moment ${kidName} can share`,
+      `${kidName} will enjoy the calm vibes together`,
+      `Relaxing fun for ${kidName}`,
+      `A quiet activity ${kidName} will appreciate`,
+      `${kidName} can wind down together with this`,
+      `Gentle fun for ${kidName}`,
+    ],
+    outdoor: [
+      `Fresh air fun for ${kidName}`,
+      `${kidName} will enjoy being outside together`,
+      `An outdoor adventure ${kidName} can share`,
+      `Get ${kidName} out exploring together`,
+      `${kidName} will love this outdoor activity`,
+      `Outside fun awaits ${kidName}`,
+    ],
+    music: [
+      `${kidName} will enjoy the sounds together`,
+      `A musical moment ${kidName} can share`,
+      `${kidName} can make some noise together`,
+      `Rhythm and fun for ${kidName}`,
+      `${kidName} will love this musical activity`,
+      `${kidName} can explore music together`,
+    ],
+    games: [
+      `${kidName} will have fun with this game`,
+      `Game time for ${kidName}`,
+      `${kidName} will love this kind of play`,
+      `A playful pick for ${kidName}`,
+      `${kidName} will enjoy the challenge together`,
+      `Fun and games for ${kidName}`,
+    ],
+  };
+
+  const categoryTemplates = isMultipleKids ? multiKidTemplates : singleKidTemplates;
+
   if (categoryTemplates[category]) {
     const options = categoryTemplates[category];
     return options[hash % options.length];
   }
 
   // TIER 3: Energy + Location based (if category somehow missing)
-  const contextTemplates = [];
+  // Use different templates for single vs multiple kids
+  let contextTemplates = [];
 
-  if (energy === 'high') {
-    contextTemplates.push(
-      `Perfect for burning off ${kidName}'s energy`,
-      `${kidName} will love the action`,
-      `Great when ${kidName} needs to move`,
-      `Active fun for ${kidName}`,
-      `${kidName} can let loose with this`
-    );
-  } else if (energy === 'low') {
-    contextTemplates.push(
-      `A calm activity for ${kidName}`,
-      `Relaxing fun ${kidName} will enjoy`,
-      `${kidName} can take it easy with this`,
-      `Gentle activity for ${kidName}`,
-      `A mellow moment for ${kidName}`
-    );
+  if (isMultipleKids) {
+    if (energy === 'high') {
+      contextTemplates = [
+        `${kidName} will love the action`,
+        `Great when ${kidName} need to move`,
+        `Active fun for ${kidName}`,
+        `${kidName} can let loose with this`,
+        `Perfect for burning off energy together`,
+      ];
+    } else if (energy === 'low') {
+      contextTemplates = [
+        `A calm activity for ${kidName}`,
+        `Relaxing fun ${kidName} will enjoy`,
+        `${kidName} can take it easy with this`,
+        `Gentle activity for ${kidName}`,
+        `A mellow moment ${kidName} can share`,
+      ];
+    } else {
+      contextTemplates = [
+        `Just the right pace for ${kidName}`,
+        `${kidName} will enjoy this activity`,
+        `A balanced pick for ${kidName}`,
+        `${kidName} will have fun with this`,
+        `A nice activity for ${kidName}`,
+      ];
+    }
   } else {
-    // Medium energy
-    contextTemplates.push(
-      `Just the right pace for ${kidName}`,
-      `${kidName} will enjoy this activity`,
-      `A balanced pick for ${kidName}`,
-      `${kidName} will have fun with this`,
-      `Nice activity for ${kidName}`
-    );
+    if (energy === 'high') {
+      contextTemplates = [
+        `Perfect for burning off ${kidName}'s energy`,
+        `${kidName} will love the action`,
+        `Great when ${kidName} needs to move`,
+        `Active fun for ${kidName}`,
+        `${kidName} can let loose with this`,
+      ];
+    } else if (energy === 'low') {
+      contextTemplates = [
+        `A calm activity for ${kidName}`,
+        `Relaxing fun ${kidName} will enjoy`,
+        `${kidName} can take it easy with this`,
+        `Gentle activity for ${kidName}`,
+        `A mellow moment for ${kidName}`,
+      ];
+    } else {
+      contextTemplates = [
+        `Just the right pace for ${kidName}`,
+        `${kidName} will enjoy this activity`,
+        `A balanced pick for ${kidName}`,
+        `${kidName} will have fun with this`,
+        `A nice activity for ${kidName}`,
+      ];
+    }
   }
 
   // Add location flavor
-  if (location === 'outdoor' && contextTemplates.length > 0) {
+  if (location === 'outdoor') {
     contextTemplates.push(
       `${kidName} will enjoy this outside`,
       `Fresh air fun for ${kidName}`
     );
-  } else if (location === 'indoor' && contextTemplates.length > 0) {
+  } else if (location === 'indoor') {
     contextTemplates.push(
       `Indoor fun for ${kidName}`,
-      `${kidName} can do this right at home`
+      isMultipleKids ? `${kidName} can do this at home` : `${kidName} can do this right at home`
     );
   }
 
@@ -305,15 +469,21 @@ const getPersonalizedReason = (activity, kids) => {
   }
 
   // TIER 4: Age-based fallback (should rarely reach here)
-  const age = kid.age || 0;
-  const ageTemplates = [
-    `Just right for ${kidName}`,
-    `${kidName} will enjoy this`,
-    `A good pick for ${kidName}`,
-    `${kidName} is ready for this`,
-    `Made for kids like ${kidName}`,
-    `${kidName} will have a good time`,
-  ];
+  const ageTemplates = isMultipleKids
+    ? [
+        `Just right for ${kidName}`,
+        `${kidName} will enjoy this`,
+        `A good pick for ${kidName}`,
+        `${kidName} will have a good time`,
+        `A great activity for ${kidName}`,
+      ]
+    : [
+        `Just right for ${kidName}`,
+        `${kidName} will enjoy this`,
+        `A good pick for ${kidName}`,
+        `${kidName} is ready for this`,
+        `${kidName} will have a good time`,
+      ];
 
   return ageTemplates[hash % ageTemplates.length];
 };
@@ -324,9 +494,9 @@ const RecommendationScreen = () => {
   const { colors, isDark } = useTheme();
   const { kids: allKids } = useKids();
   const { saveActivityToHistory } = useHistory();
-  const { recordRecommendationUsage } = useSubscription();
+  const { recordRecommendationUsage, effectiveTier } = useSubscription();
 
-  const { duration, location, energy, selectedKids: routeSelectedKids } = route.params || {};
+  const { duration, location, energy, materials, selectedKids: routeSelectedKids, surpriseActivity, weather, seasonFilter } = route.params || {};
 
   // Use selected kids from route params, or fall back to all kids
   const kids = routeSelectedKids || allKids;
@@ -344,7 +514,24 @@ const RecommendationScreen = () => {
     const fetchRecommendations = async () => {
       setLoading(true);
       setError(null);
-      addBreadcrumb('Fetching recommendations', 'recommendation', { duration, location, energy });
+
+      // If we have a surprise activity, just use that
+      if (surpriseActivity) {
+        const activity = {
+          ...surpriseActivity,
+          ageGroups: surpriseActivity.age_groups,
+          adultSupervision: surpriseActivity.adult_supervision,
+          popularityScore: surpriseActivity.popularity_score,
+        };
+        setRecommendations([activity]);
+        setLoading(false);
+        addBreadcrumb('Surprise activity loaded', 'recommendation', { activityId: activity.id });
+        Analytics.startSession(duration, kids.length);
+        await recordRecommendationUsage();
+        return;
+      }
+
+      addBreadcrumb('Fetching recommendations', 'recommendation', { duration, location, energy, materials });
       Analytics.startSession(duration, kids.length);
 
       // Record usage for subscription tracking
@@ -361,6 +548,18 @@ const RecommendationScreen = () => {
         excludedCount: excludedIds.length,
       });
 
+      // Determine current season for filtering
+      const getCurrentSeason = () => {
+        const month = new Date().getMonth();
+        if (month >= 2 && month <= 4) return 'spring';
+        if (month >= 5 && month <= 7) return 'summer';
+        if (month >= 8 && month <= 10) return 'fall';
+        return 'winter';
+      };
+
+      // Get weather tag if weather was provided
+      const weatherTag = weather ? getActivityWeatherTag(weather) : null;
+
       try {
         // Try backend API first
         const response = await getApiRecommendations({
@@ -368,21 +567,43 @@ const RecommendationScreen = () => {
           duration,
           location: location || 'both',
           energy,
+          materials,
+          season: seasonFilter === 'current' ? getCurrentSeason() : 'any',
+          weatherTag: weatherTag,
+          subscriptionTier: effectiveTier || 'free',
           excludedActivityIds,
-          count: 10,
+          count: 15,
         });
 
         if (response.activities && response.activities.length > 0) {
           // Transform API response to match local format
-          const activities = response.activities.map((a) => ({
+          let activities = response.activities.map((a) => ({
             ...a,
             ageGroups: a.age_groups,
             adultSupervision: a.adult_supervision,
             popularityScore: a.popularity_score,
             relevanceScore: a.relevance_score,
           }));
+
+          // Apply client-side weather filtering if weather is provided
+          if (weatherTag) {
+            activities = activities.filter((a) => isActivitySuitableForWeather(a, weatherTag));
+          }
+
+          // Apply seasonal filtering client-side as backup
+          if (seasonFilter === 'current') {
+            const currentSeason = getCurrentSeason();
+            activities = activities.filter((a) =>
+              !a.season || a.season === 'any' || a.season === currentSeason
+            );
+          }
+
           setRecommendations(activities);
-          addBreadcrumb('Recommendations loaded from API', 'recommendation', { count: activities.length });
+          addBreadcrumb('Recommendations loaded from API', 'recommendation', {
+            count: activities.length,
+            weatherFiltered: !!weatherTag,
+            seasonFiltered: seasonFilter === 'current',
+          });
         } else {
           throw new Error('No activities returned');
         }
@@ -394,12 +615,27 @@ const RecommendationScreen = () => {
         const durationObj = DURATIONS[duration?.toUpperCase()];
         const availableTime = durationObj?.max || 60;
 
-        const localRecommendations = getRecommendedActivities(kids, {
-          count: 10,
+        let localRecommendations = getRecommendedActivities(kids, {
+          count: 15,
           location: location !== 'both' ? location : undefined,
           availableTime,
           energy,
         });
+
+        // Apply weather filtering to local recommendations
+        if (weatherTag) {
+          localRecommendations = localRecommendations.filter((a) =>
+            isActivitySuitableForWeather(a, weatherTag)
+          );
+        }
+
+        // Apply seasonal filtering
+        if (seasonFilter === 'current') {
+          const currentSeason = getCurrentSeason();
+          localRecommendations = localRecommendations.filter((a) =>
+            !a.season || a.season === 'any' || a.season === currentSeason
+          );
+        }
 
         setRecommendations(localRecommendations);
       } finally {
@@ -408,7 +644,7 @@ const RecommendationScreen = () => {
     };
 
     fetchRecommendations();
-  }, [kids, duration, location, energy]);
+  }, [kids, duration, location, energy, materials, surpriseActivity, weather, seasonFilter]);
 
   const position = useState(new Animated.ValueXY())[0];
 
@@ -549,6 +785,24 @@ const RecommendationScreen = () => {
 
         {/* Card Content */}
         <View style={styles.cardContent}>
+          {/* Premium/Seasonal Badge Row */}
+          {(currentActivity.premium || (currentActivity.season && currentActivity.season !== 'any')) && (
+            <View style={styles.premiumBadgeRow}>
+              {currentActivity.premium && (
+                <Badge variant="premium" size="sm" style={styles.premiumBadge}>
+                  <Text style={styles.premiumBadgeText}>Premium</Text>
+                </Badge>
+              )}
+              {currentActivity.season && currentActivity.season !== 'any' && (
+                <Badge variant="secondary" size="sm" style={[styles.seasonBadge, { backgroundColor: getSeasonColor(currentActivity.season) + '20' }]}>
+                  <Text style={{ color: getSeasonColor(currentActivity.season) }}>
+                    {getSeasonEmoji(currentActivity.season)} {currentActivity.season.charAt(0).toUpperCase() + currentActivity.season.slice(1)}
+                  </Text>
+                </Badge>
+              )}
+            </View>
+          )}
+
           {/* Emoji */}
           <Text style={styles.activityEmoji}>{currentActivity.emoji}</Text>
 
@@ -574,9 +828,12 @@ const RecommendationScreen = () => {
 
           {/* Personalized recommendation line */}
           {kids && kids.length > 0 && (
-            <Text style={[styles.personalizedText, { color: colors.text.tertiary }]}>
-              {getPersonalizedReason(currentActivity, kids)}
-            </Text>
+            <View style={[styles.personalizedBadge, { backgroundColor: colors.secondary.light }]}>
+              <Text style={styles.personalizedIcon}>💡</Text>
+              <Text style={[styles.personalizedText, { color: colors.text.primary }]}>
+                {getPersonalizedReason(currentActivity, kids)}
+              </Text>
+            </View>
           )}
 
           {/* Quick Info Pills */}
@@ -823,17 +1080,47 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 16,
   },
+  premiumBadgeRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  premiumBadge: {
+    backgroundColor: '#9333ea',
+  },
+  premiumBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+  },
+  seasonBadge: {
+    alignSelf: 'center',
+  },
   activityDescription: {
     fontSize: 16,
     textAlign: 'center',
     lineHeight: 24,
     marginBottom: 12,
   },
+  personalizedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    marginBottom: 20,
+    width: '100%',
+  },
+  personalizedIcon: {
+    fontSize: 18,
+    marginRight: 10,
+  },
   personalizedText: {
     fontSize: 14,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginBottom: 20,
+    fontWeight: '500',
+    flex: 1,
   },
   pillsRow: {
     flexDirection: 'row',

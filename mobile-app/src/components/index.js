@@ -19,7 +19,12 @@ export {
   Slider,
   ScreenWrapper,
   TopBar,
+  StarRating,
+  RatingModal,
+  FABMenu,
+  ScheduleActivityModal,
 } from './ui';
 
 // Feature Components
 export { default as Paywall } from './Paywall';
+export { default as CreateActivityModal } from './CreateActivityModal';

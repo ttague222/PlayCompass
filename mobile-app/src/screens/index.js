@@ -11,4 +11,5 @@ export { default as TimeSelectScreen } from './TimeSelectScreen';
 export { default as RecommendationScreen } from './RecommendationScreen';
 export { default as AcceptedActivitiesScreen } from './AcceptedActivitiesScreen';
 export { default as ActivityDetailScreen } from './ActivityDetailScreen';
-export { default as HistoryScreen } from './HistoryScreen';
+export { default as SavedActivitiesScreen } from './SavedActivitiesScreen';
+export { default as CustomActivitiesScreen } from './CustomActivitiesScreen';

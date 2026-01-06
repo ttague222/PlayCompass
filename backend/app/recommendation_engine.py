@@ -15,7 +15,10 @@ from .models import (
     Duration,
     Location,
     EnergyLevel,
+    Season,
+    WeatherCondition,
 )
+from datetime import datetime
 
 
 # Age group mapping for child ages
@@ -36,6 +39,19 @@ DURATION_RANGES = {
     "long": (60, 120),
     "extended": (120, 999),
 }
+
+# Season mapping by month
+MONTH_TO_SEASON = {
+    1: "winter", 2: "winter", 3: "spring",
+    4: "spring", 5: "spring", 6: "summer",
+    7: "summer", 8: "summer", 9: "fall",
+    10: "fall", 11: "fall", 12: "winter",
+}
+
+
+def get_current_season() -> str:
+    """Get the current season based on the month."""
+    return MONTH_TO_SEASON.get(datetime.now().month, "any")
 
 
 def get_age_group_from_age(age: int) -> str:
@@ -68,19 +84,27 @@ def filter_activities(
     duration: Optional[str] = None,
     location: Optional[str] = None,
     energy: Optional[str] = None,
+    materials: Optional[str] = None,
     interests: Optional[list[str]] = None,
     excluded_ids: Optional[list[str]] = None,
+    season: Optional[str] = None,
+    weather: Optional[str] = None,
+    include_premium: bool = False,
 ) -> list[dict]:
     """
     Filter activities based on criteria.
 
     Args:
-        age_groups: List of age group IDs (activities must match ALL)
+        age_groups: List of age group IDs (activities must match ANY)
         duration: Duration ID
         location: Location ID (indoor/outdoor/both)
         energy: Energy level ID
+        materials: Materials filter ('none', 'basic', or 'any'/None for all)
         interests: List of interest IDs (activities match ANY)
         excluded_ids: List of activity IDs to exclude
+        season: Season to filter for (spring/summer/fall/winter)
+        weather: Current weather condition
+        include_premium: Whether to include premium-only activities
 
     Returns:
         List of matching activities
@@ -91,11 +115,16 @@ def filter_activities(
     if excluded_ids:
         result = [a for a in result if a["id"] not in excluded_ids]
 
-    # Filter by age groups (must match ALL specified age groups)
+    # Filter premium activities (only include if user has premium)
+    if not include_premium:
+        result = [a for a in result if not a.get("premium", False)]
+
+    # Filter by age groups (must match ANY specified age group)
+    # Activities that match more age groups will get higher relevance scores later
     if age_groups:
         result = [
             a for a in result
-            if all(ag in a["age_groups"] for ag in age_groups)
+            if any(ag in a["age_groups"] for ag in age_groups)
         ]
 
     # Filter by duration
@@ -113,11 +142,37 @@ def filter_activities(
     if energy:
         result = [a for a in result if a["energy"] == energy]
 
+    # Filter by materials
+    # 'none' = only activities with no supplies
+    # 'basic' = activities with no supplies OR basic household items
+    # 'any' or None = all activities
+    if materials and materials != "any":
+        if materials == "none":
+            result = [a for a in result if a.get("materials") == "none"]
+        elif materials == "basic":
+            result = [a for a in result if a.get("materials") in ["none", "basic"]]
+
     # Filter by interests (match ANY)
     if interests:
         result = [
             a for a in result
             if any(interest in a["interests"] for interest in interests)
+        ]
+
+    # Filter by season (include activities for specific season or 'any' season)
+    if season and season != "any":
+        result = [
+            a for a in result
+            if a.get("season", "any") in [season, "any"]
+        ]
+
+    # Filter by weather (include activities suitable for current weather)
+    if weather and weather != "any":
+        result = [
+            a for a in result
+            if not a.get("weather_conditions") or  # No weather restrictions
+            weather in a.get("weather_conditions", []) or
+            "any" in a.get("weather_conditions", [])
         ]
 
     return result
@@ -149,13 +204,16 @@ def calculate_relevance_score(
         )
         score += interest_matches * 10
 
-    # Bonus for activities that span more age groups (good for multiple kids)
+    # Bonus for activities that match kid age groups
     age_coverage = sum(
         1 for ag in kid_age_groups
         if ag in activity.get("age_groups", [])
     )
+    # Give points for each age group matched
+    score += age_coverage * 10
+    # Extra bonus if activity works for ALL kids (great for siblings)
     if len(kid_age_groups) > 1 and age_coverage == len(kid_age_groups):
-        score += 15  # Bonus for activities all kids can do together
+        score += 20  # Strong bonus for activities all kids can do together
 
     return score
 
@@ -174,12 +232,25 @@ def get_recommendations(request: RecommendationRequest) -> tuple[list[dict], int
     age_groups = get_age_groups_from_kids(request.kids)
     interests = get_interests_from_kids(request.kids)
 
+    # Determine season (auto-detect if 'current' or not specified for premium users)
+    season = request.season
+    if season == "current":
+        season = get_current_season()
+
+    # Check if user has premium access
+    # Premium tiers: 'plus' and 'family' get access to premium content
+    has_premium = request.subscription_tier in ["plus", "family"]
+
     # Build filters dict for response
     filters_applied = {
         "age_groups": age_groups,
         "duration": request.duration.value if request.duration else None,
         "location": request.location.value if request.location else None,
         "energy": request.energy.value if request.energy else None,
+        "materials": request.materials,
+        "season": season,
+        "weather": request.weather,
+        "subscription_tier": request.subscription_tier,
         "kid_count": len(request.kids),
         "interests_matched": interests,
     }
@@ -190,7 +261,11 @@ def get_recommendations(request: RecommendationRequest) -> tuple[list[dict], int
         duration=request.duration.value if request.duration else None,
         location=request.location.value if request.location else None,
         energy=request.energy.value if request.energy else None,
+        materials=request.materials,
         excluded_ids=request.excluded_activity_ids,
+        season=season if has_premium else None,  # Only filter by season for premium
+        weather=request.weather if has_premium else None,  # Only filter by weather for premium
+        include_premium=has_premium,
     )
 
     total_available = len(filtered)
@@ -201,6 +276,19 @@ def get_recommendations(request: RecommendationRequest) -> tuple[list[dict], int
         score = calculate_relevance_score(activity, interests, age_groups)
         # Add random factor (0-5) to introduce variety among similar activities
         random_factor = random.uniform(0, 5)
+
+        # Bonus for seasonal activities in current season (for premium users)
+        if has_premium and season:
+            activity_season = activity.get("season", "any")
+            if activity_season == season:
+                score += 15  # Boost seasonal activities in current season
+
+        # Bonus for weather-appropriate activities (for premium users)
+        if has_premium and request.weather:
+            weather_conditions = activity.get("weather_conditions", [])
+            if request.weather in weather_conditions:
+                score += 10  # Boost weather-appropriate activities
+
         activity_with_score = {**activity, "relevance_score": score + random_factor}
         scored_activities.append(activity_with_score)
 

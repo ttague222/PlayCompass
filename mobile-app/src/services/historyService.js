@@ -3,13 +3,78 @@
  *
  * Handles saving and retrieving activity history
  * Uses backend API for authenticated users, local storage as fallback
+ * Respects subscription tier retention limits
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { saveHistory as saveHistoryApi, getHistory as getHistoryApi } from './apiService';
+import { SUBSCRIPTION_TIERS } from './subscriptionService';
 
 const HISTORY_STORAGE_KEY = '@playcompass_history';
-const MAX_LOCAL_HISTORY = 100;
+const MAX_LOCAL_HISTORY = 500; // Max storage, filtering happens by tier
+
+/**
+ * Get history retention days based on subscription tier
+ */
+export const getRetentionDays = (tier = 'free') => {
+  const tierConfig = SUBSCRIPTION_TIERS[tier] || SUBSCRIPTION_TIERS.free;
+  return tierConfig.features.historyDays || 7;
+};
+
+/**
+ * Filter history entries by retention period
+ */
+export const filterByRetention = (history, tier = 'free') => {
+  const retentionDays = getRetentionDays(tier);
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - retentionDays);
+
+  return history.filter((entry) => {
+    const entryDate = new Date(entry.timestamp);
+    return entryDate >= cutoffDate;
+  });
+};
+
+/**
+ * Clean up old history entries based on subscription tier
+ * Call this periodically or when tier changes
+ */
+export const cleanupOldHistory = async (tier = 'free') => {
+  try {
+    const allHistory = await getLocalHistoryUnfiltered();
+    const filteredHistory = filterByRetention(allHistory, tier);
+
+    if (filteredHistory.length < allHistory.length) {
+      await AsyncStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(filteredHistory));
+      console.log(
+        `[History] Cleaned up ${allHistory.length - filteredHistory.length} old entries`
+      );
+    }
+
+    return {
+      success: true,
+      removed: allHistory.length - filteredHistory.length,
+      remaining: filteredHistory.length,
+    };
+  } catch (error) {
+    console.error('Error cleaning up history:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+/**
+ * Get all local history without retention filtering (for internal use)
+ */
+const getLocalHistoryUnfiltered = async () => {
+  try {
+    const historyJson = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!historyJson) return [];
+    return JSON.parse(historyJson);
+  } catch (error) {
+    console.error('Error getting local history:', error);
+    return [];
+  }
+};
 
 /**
  * Create a history entry from an activity
@@ -65,11 +130,13 @@ export const saveHistory = async (entries, isAuthenticated = false) => {
 /**
  * Get activity history
  * Tries API first for authenticated users, falls back to local storage
+ * Filters by subscription tier retention period
  * @param {boolean} isAuthenticated - Whether user is authenticated
  * @param {number} [limit] - Maximum entries to retrieve
+ * @param {string} [tier] - Subscription tier for retention filtering
  * @returns {Promise<Array>} History entries
  */
-export const getHistory = async (isAuthenticated = false, limit = 50) => {
+export const getHistory = async (isAuthenticated = false, limit = 50, tier = 'free') => {
   try {
     // Try API first for authenticated users
     if (isAuthenticated) {
@@ -77,7 +144,8 @@ export const getHistory = async (isAuthenticated = false, limit = 50) => {
         const response = await getHistoryApi(limit);
         if (response.history && response.history.length > 0) {
           console.log('[History] Loaded from API, entries:', response.history.length);
-          return response.history;
+          // Filter by tier retention even for API results
+          return filterByRetention(response.history, tier).slice(0, limit);
         }
         // API returned empty, fall back to local
       } catch (apiError) {
@@ -87,7 +155,7 @@ export const getHistory = async (isAuthenticated = false, limit = 50) => {
     }
 
     // Fall back to local storage
-    const localHistory = await getLocalHistory(limit);
+    const localHistory = await getLocalHistory(limit, tier);
     console.log('[History] Loaded from local storage, entries:', localHistory.length);
     return localHistory;
   } catch (error) {
@@ -98,16 +166,20 @@ export const getHistory = async (isAuthenticated = false, limit = 50) => {
 
 /**
  * Get history from local storage
+ * Filters by subscription tier retention period
  * @param {number} [limit] - Maximum entries to retrieve
+ * @param {string} [tier] - Subscription tier for retention filtering
  * @returns {Promise<Array>} History entries
  */
-export const getLocalHistory = async (limit = MAX_LOCAL_HISTORY) => {
+export const getLocalHistory = async (limit = MAX_LOCAL_HISTORY, tier = 'free') => {
   try {
     const historyJson = await AsyncStorage.getItem(HISTORY_STORAGE_KEY);
     if (!historyJson) return [];
 
     const history = JSON.parse(historyJson);
-    return history.slice(0, limit);
+    // Filter by tier retention period
+    const filteredHistory = filterByRetention(history, tier);
+    return filteredHistory.slice(0, limit);
   } catch (error) {
     console.error('Error getting local history:', error);
     return [];
@@ -192,4 +264,7 @@ export default {
   clearLocalHistory,
   markCompleted,
   getHistoryStats,
+  getRetentionDays,
+  filterByRetention,
+  cleanupOldHistory,
 };

@@ -10,7 +10,7 @@ import { useTheme } from '../../context/ThemeContext';
 
 const Badge = ({
   children,
-  variant = 'default', // default, primary, secondary, success, warning, error
+  variant = 'default', // default, primary, secondary, success, warning, error, premium
   size = 'md', // sm, md, lg
   style,
   textStyle,
@@ -63,6 +63,11 @@ const Badge = ({
       case 'error':
         return {
           backgroundColor: colors.error.main,
+          textColor: '#ffffff',
+        };
+      case 'premium':
+        return {
+          backgroundColor: '#9333ea', // Purple gradient for premium
           textColor: '#ffffff',
         };
       default:

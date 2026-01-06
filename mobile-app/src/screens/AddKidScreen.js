@@ -27,7 +27,7 @@ const AddKidScreen = () => {
   const route = useRoute();
   const { colors } = useTheme();
   const { addKid, updateKid, removeKid, getKidById, canAddKid, maxKids, INTERESTS, KID_AVATARS, loading } = useKids();
-  const { tier, allTiers } = useSubscription();
+  const { effectiveTier, allTiers } = useSubscription();
   const insets = useSafeAreaInsets();
 
   // Check if editing existing kid
@@ -70,7 +70,7 @@ const AddKidScreen = () => {
 
     // Check subscription limit for new kids
     if (!isEditing && !canAddKid) {
-      const nextTier = tier === 'free' ? allTiers.plus : tier === 'plus' ? allTiers.family : null;
+      const nextTier = effectiveTier === 'free' ? allTiers.plus : effectiveTier === 'plus' ? allTiers.family : null;
       const upgradeMessage = nextTier
         ? `\n\nUpgrade to ${nextTier.name} (${nextTier.priceLabel}) for up to ${nextTier.features.maxKids} children.`
         : '';

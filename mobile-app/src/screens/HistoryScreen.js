@@ -20,6 +20,7 @@ import { useHistory } from '../context/HistoryContext';
 import { Card, Badge, Button, EmptyState, ScreenWrapper, IconButton } from '../components';
 import { CATEGORIES } from '../data/activitySchema';
 import { Analytics } from '../services';
+import { getActivityById } from '../services/activitiesService';
 
 const HistoryScreen = () => {
   const navigation = useNavigation();
@@ -57,14 +58,14 @@ const HistoryScreen = () => {
 
   const handleActivityPress = (historyEntry) => {
     Analytics.viewActivityDetail(historyEntry.activity_id);
-    // Navigate to activity detail with the activity info from history
+    // Try to get full activity data from catalog, fall back to history entry data
+    const fullActivity = getActivityById(historyEntry.activity_id);
     navigation.navigate('ActivityDetail', {
-      activity: {
+      activity: fullActivity || {
         id: historyEntry.activity_id,
         title: historyEntry.activity_title,
         emoji: historyEntry.activity_emoji,
         category: historyEntry.activity_category,
-        // Note: Full activity details won't be available from history
       },
     });
   };

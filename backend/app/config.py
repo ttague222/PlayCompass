@@ -35,6 +35,10 @@ class Settings(BaseSettings):
     rate_limit_requests: int = 100
     rate_limit_window: int = 60  # seconds
 
+    # Sentry (error tracking)
+    sentry_dsn: str | None = None
+    sentry_environment: str = "production"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

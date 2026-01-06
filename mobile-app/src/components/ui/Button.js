@@ -12,8 +12,15 @@ import {
   ActivityIndicator,
   View,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../context/ThemeContext';
+
+// Dynamically import LinearGradient to handle cases where native module isn't available
+let LinearGradient = null;
+try {
+  LinearGradient = require('expo-linear-gradient').LinearGradient;
+} catch (e) {
+  console.warn('[Button] expo-linear-gradient not available, using fallback');
+}
 
 const Button = ({
   children,
@@ -117,6 +124,7 @@ const Button = ({
               },
               textStyle,
             ]}
+            numberOfLines={1}
           >
             {children}
           </Text>
@@ -145,29 +153,93 @@ const Button = ({
   ];
 
   if (variantStyles.useGradient) {
-    return (
-      <TouchableOpacity
-        onPress={onPress}
-        disabled={disabled || loading}
-        activeOpacity={0.8}
-        style={[fullWidth && styles.fullWidth, style]}
-        {...props}
-      >
-        <LinearGradient
-          colors={disabled ? ['#9ca3af', '#6b7280'] : variantStyles.gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
+    // Fallback to solid color if LinearGradient is not available
+    if (!LinearGradient) {
+      return (
+        <TouchableOpacity
+          onPress={onPress}
+          disabled={disabled || loading}
+          activeOpacity={0.8}
           style={[
             styles.gradient,
             {
               paddingVertical: currentSize.paddingVertical,
               paddingHorizontal: currentSize.paddingHorizontal,
+              backgroundColor: disabled ? '#9ca3af' : (variantStyles.gradientColors?.[0] || '#7c3aed'),
             },
+            fullWidth && styles.fullWidth,
+            style,
           ]}
+          {...props}
         >
           {renderContent()}
-        </LinearGradient>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      );
+    }
+
+    // Extract flex from style if present to apply to outer container
+    const styleArray = Array.isArray(style) ? style : [style];
+    const hasFlex = styleArray.some(s => s && (s.flex !== undefined));
+
+    return (
+      <View style={[hasFlex && { flex: 1, justifyContent: 'center' }]}>
+        <TouchableOpacity
+          onPress={onPress}
+          disabled={disabled || loading}
+          activeOpacity={0.8}
+          style={[
+            fullWidth && styles.fullWidth,
+            { borderRadius: 14, overflow: 'hidden' },
+          ]}
+          {...props}
+        >
+          <LinearGradient
+            colors={disabled ? ['#9ca3af', '#9ca3af'] : variantStyles.gradientColors}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[
+              styles.gradient,
+              {
+                paddingVertical: currentSize.paddingVertical,
+                paddingHorizontal: currentSize.paddingHorizontal,
+              },
+            ]}
+          >
+            {renderContent()}
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  // Extract flex from style if present to apply to outer container
+  const styleArray = Array.isArray(style) ? style : [style];
+  const hasFlex = styleArray.some(s => s && (s.flex !== undefined));
+
+  if (hasFlex) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center' }}>
+        <TouchableOpacity
+          onPress={onPress}
+          disabled={disabled || loading}
+          activeOpacity={0.7}
+          style={[
+            styles.button,
+            {
+              paddingVertical: currentSize.paddingVertical,
+              paddingHorizontal: currentSize.paddingHorizontal,
+              borderWidth: variantStyles.borderWidth,
+              borderColor: variantStyles.borderColor,
+              backgroundColor: variantStyles.backgroundColor,
+              opacity: disabled ? 0.5 : 1,
+            },
+            fullWidth && styles.fullWidth,
+          ]}
+          {...props}
+        >
+          {renderContent()}
+        </TouchableOpacity>
+      </View>
     );
   }
 

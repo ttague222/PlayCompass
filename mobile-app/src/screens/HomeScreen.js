@@ -14,17 +14,17 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
-import { useAuth } from '../context/AuthContext';
+// Auth context available if needed in future
+// import { useAuth } from '../context/AuthContext';
 import { useKids } from '../context/KidsContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { Button, Paywall, ScreenWrapper, TopBar } from '../components';
+import { Button, Paywall, ScreenWrapper, TopBar, FABMenu } from '../components';
 
 const HomeScreen = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
-  const { isAnonymous } = useAuth();
   const { kids, hasKids, getAgeRangeString } = useKids();
-  const { usage, checkCanGetRecommendations, isPremium } = useSubscription();
+  const { usage, checkCanGetRecommendations, isPremium, isInTrial, daysRemaining, trialExpired } = useSubscription();
 
   const [showPaywall, setShowPaywall] = useState(false);
   const [recommendationsAllowed, setRecommendationsAllowed] = useState(true);
@@ -62,6 +62,46 @@ const HomeScreen = () => {
     <ScreenWrapper edges={['left', 'right', 'bottom']}>
       {/* Top Bar with overflow menu */}
       <TopBar />
+
+      {/* Trial Banner */}
+      {isInTrial && (
+        <TouchableOpacity
+          style={[styles.trialBanner, { backgroundColor: colors.secondary.light }]}
+          onPress={() => navigation.navigate('Subscription')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.trialIcon}>🎁</Text>
+          <View style={styles.trialTextContainer}>
+            <Text style={[styles.trialTitle, { color: colors.text.primary }]}>
+              Free Trial Active
+            </Text>
+            <Text style={[styles.trialSubtext, { color: colors.text.secondary }]}>
+              {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'} left • Tap to subscribe
+            </Text>
+          </View>
+          <Text style={[styles.trialArrow, { color: colors.secondary.dark }]}>→</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Trial Expired Banner */}
+      {trialExpired && !isPremium && (
+        <TouchableOpacity
+          style={[styles.trialBanner, { backgroundColor: colors.warning.light }]}
+          onPress={() => navigation.navigate('Subscription')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.trialIcon}>⏰</Text>
+          <View style={styles.trialTextContainer}>
+            <Text style={[styles.trialTitle, { color: colors.text.primary }]}>
+              Trial Ended
+            </Text>
+            <Text style={[styles.trialSubtext, { color: colors.text.secondary }]}>
+              Subscribe to keep all features • Tap to upgrade
+            </Text>
+          </View>
+          <Text style={[styles.trialArrow, { color: colors.warning.dark }]}>→</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Main Content - Centered CTA */}
       <View style={styles.mainContent}>
@@ -104,8 +144,8 @@ const HomeScreen = () => {
             {!hasKids
               ? 'Add Your Kids'
               : (!recommendationsAllowed && !isPremium)
-                ? 'Daily Limit Reached'
-                : 'Recommend Something'}
+                ? 'Get More Ideas'
+                : 'Find an Activity'}
           </Button>
 
           {/* Usage indicator */}
@@ -131,14 +171,6 @@ const HomeScreen = () => {
         </View>
       </View>
 
-      {/* Guest mode indicator */}
-      {isAnonymous && (
-        <View style={[styles.guestBanner, { backgroundColor: colors.surface.secondary }]}>
-          <Text style={[styles.guestText, { color: colors.text.tertiary }]}>
-            Guest Mode • Sign in to save your data
-          </Text>
-        </View>
-      )}
 
       {/* Paywall Modal */}
       <Paywall
@@ -146,6 +178,9 @@ const HomeScreen = () => {
         onClose={() => setShowPaywall(false)}
         blockedFeature="dailyRecommendations"
       />
+
+      {/* FAB Menu for navigation */}
+      <FABMenu onFindActivity={handleGetRecommendation} />
     </ScreenWrapper>
   );
 };
@@ -202,12 +237,33 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  guestBanner: {
-    paddingVertical: 12,
+  trialBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    marginHorizontal: 16,
+    marginTop: 23,
+    borderRadius: 12,
   },
-  guestText: {
+  trialIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  trialTextContainer: {
+    flex: 1,
+  },
+  trialTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  trialSubtext: {
     fontSize: 13,
+    marginTop: 2,
+  },
+  trialArrow: {
+    fontSize: 18,
+    fontWeight: '600',
   },
 });
 

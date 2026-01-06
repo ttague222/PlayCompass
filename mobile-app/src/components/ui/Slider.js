@@ -12,8 +12,15 @@ import {
   PanResponder,
   Dimensions,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../context/ThemeContext';
+
+// Dynamically import LinearGradient to handle cases where native module isn't available
+let LinearGradient = null;
+try {
+  LinearGradient = require('expo-linear-gradient').LinearGradient;
+} catch (e) {
+  console.warn('[Slider] expo-linear-gradient not available, using fallback');
+}
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SLIDER_WIDTH = SCREEN_WIDTH - 80;
@@ -93,12 +100,16 @@ const Slider = ({
         <View style={[styles.track, { backgroundColor: colors.border.light }]} />
 
         {/* Fill */}
-        <LinearGradient
-          colors={gradients.primary}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-          style={[styles.fill, { width: fillWidth }]}
-        />
+        {LinearGradient ? (
+          <LinearGradient
+            colors={gradients.primary}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={[styles.fill, { width: fillWidth }]}
+          />
+        ) : (
+          <View style={[styles.fill, { width: fillWidth, backgroundColor: colors.primary.main }]} />
+        )}
 
         {/* Thumb */}
         <View

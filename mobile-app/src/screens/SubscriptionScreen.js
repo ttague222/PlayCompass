@@ -156,10 +156,12 @@ const SubscriptionScreen = () => {
           isPopular && !isCurrentTier && { borderColor: colors.secondary.main, borderWidth: 2 },
         ]}
       >
-        {/* Popular Badge */}
+        {/* Popular Badge - Corner Ribbon */}
         {isPopular && !isCurrentTier && (
-          <View style={[styles.popularBadge, { backgroundColor: colors.secondary.main }]}>
-            <Text style={styles.popularBadgeText}>MOST POPULAR</Text>
+          <View style={styles.popularBadgeContainer}>
+            <View style={[styles.popularBadge, { backgroundColor: colors.secondary.main }]}>
+              <Text style={styles.popularBadgeText}>MOST POPULAR</Text>
+            </View>
           </View>
         )}
 
@@ -221,13 +223,6 @@ const SubscriptionScreen = () => {
             }
             colors={colors}
           />
-          {!features.adsEnabled && (
-            <FeatureRow
-              icon="🚫"
-              label="No advertisements"
-              colors={colors}
-            />
-          )}
           {features.categories === 'all' && (
             <FeatureRow
               icon="📚"
@@ -246,13 +241,6 @@ const SubscriptionScreen = () => {
             <FeatureRow
               icon="📴"
               label="Offline mode"
-              colors={colors}
-            />
-          )}
-          {features.prioritySupport && (
-            <FeatureRow
-              icon="💬"
-              label="Priority support"
               colors={colors}
             />
           )}
@@ -486,13 +474,23 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
+  popularBadgeContainer: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    overflow: 'hidden',
+    width: 120,
+    height: 120,
+  },
   popularBadge: {
     position: 'absolute',
-    top: 12,
-    right: -30,
-    paddingVertical: 4,
-    paddingHorizontal: 40,
+    top: 20,
+    right: -40,
+    width: 150,
+    paddingVertical: 6,
     transform: [{ rotate: '45deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   popularBadgeText: {
     color: '#FFFFFF',

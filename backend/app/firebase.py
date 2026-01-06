@@ -2,12 +2,15 @@
 Firebase Admin SDK initialization and utilities
 """
 
+import logging
 import os
 import firebase_admin
 from firebase_admin import credentials, firestore, auth
 from functools import lru_cache
 
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 _firebase_app = None
@@ -62,7 +65,7 @@ def verify_firebase_token(id_token: str) -> dict | None:
         decoded_token = auth.verify_id_token(id_token)
         return decoded_token
     except Exception as e:
-        print(f"Token verification failed: {e}")
+        logger.warning(f"Token verification failed: {e}")
         return None
 
 

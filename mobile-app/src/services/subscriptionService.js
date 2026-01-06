@@ -8,6 +8,75 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 
 const USAGE_KEY = '@playcompass_usage';
+const TRIAL_DURATION_DAYS = 7;
+
+/**
+ * Trial helper functions
+ */
+
+/**
+ * Check if user is in trial period
+ * @param {Date|string|null} trialStartDate - When the trial started
+ * @returns {Object} Trial status info
+ */
+export const getTrialStatus = (trialStartDate) => {
+  if (!trialStartDate) {
+    return { isInTrial: false, daysRemaining: 0, trialExpired: false };
+  }
+
+  const startDate = trialStartDate instanceof Date
+    ? trialStartDate
+    : trialStartDate.toDate
+      ? trialStartDate.toDate()
+      : new Date(trialStartDate);
+
+  const now = new Date();
+  const trialEndDate = new Date(startDate);
+  trialEndDate.setDate(trialEndDate.getDate() + TRIAL_DURATION_DAYS);
+
+  const msRemaining = trialEndDate.getTime() - now.getTime();
+  const daysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
+
+  if (daysRemaining > 0) {
+    return {
+      isInTrial: true,
+      daysRemaining,
+      trialEndDate,
+      trialExpired: false,
+    };
+  }
+
+  return {
+    isInTrial: false,
+    daysRemaining: 0,
+    trialEndDate,
+    trialExpired: true,
+  };
+};
+
+/**
+ * Start trial for a user (called on signup)
+ */
+export const startTrial = async (userId) => {
+  try {
+    const trialStartDate = new Date();
+    await firestore().collection('users').doc(userId).update({
+      trialStartDate: firestore.FieldValue.serverTimestamp(),
+      subscription: {
+        tier: 'free',
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      },
+    });
+    return {
+      success: true,
+      trialStartDate,
+      ...getTrialStatus(trialStartDate),
+    };
+  } catch (error) {
+    console.error('Error starting trial:', error);
+    return { success: false, error: error.message };
+  }
+};
 
 /**
  * Subscription tiers configuration
@@ -19,13 +88,19 @@ export const SUBSCRIPTION_TIERS = {
     price: 0,
     priceLabel: 'Free',
     features: {
-      dailyRecommendations: 3,
+      dailyRecommendations: 5,
       maxKids: 2,
       historyDays: 7,
       categories: ['creative', 'games', 'physical', 'educational'], // Limited categories
       customActivities: false,
+      scheduling: false,
       prioritySupport: false,
       offlineMode: false,
+      // Premium content features
+      seasonalActivities: false,
+      weatherAware: false,
+      detailedInstructions: false,
+      progressTracking: false,
     },
     description: 'Perfect for trying out PlayCompass',
   },
@@ -35,13 +110,19 @@ export const SUBSCRIPTION_TIERS = {
     price: 4.99,
     priceLabel: '$4.99/month',
     features: {
-      dailyRecommendations: 15,
+      dailyRecommendations: 25,
       maxKids: 5,
       historyDays: 30,
       categories: 'all', // All categories
       customActivities: true,
+      scheduling: true,
       prioritySupport: false,
       offlineMode: true,
+      // Premium content features
+      seasonalActivities: true,
+      weatherAware: true,
+      detailedInstructions: true,
+      progressTracking: true,
     },
     description: 'For active families who want more variety',
   },
@@ -56,8 +137,14 @@ export const SUBSCRIPTION_TIERS = {
       historyDays: 365,
       categories: 'all',
       customActivities: true,
+      scheduling: true,
       prioritySupport: true,
       offlineMode: true,
+      // Premium content features
+      seasonalActivities: true,
+      weatherAware: true,
+      detailedInstructions: true,
+      progressTracking: true,
     },
     description: 'The complete PlayCompass experience',
   },
@@ -92,6 +179,11 @@ export const FEATURE_DESCRIPTIONS = {
     icon: '✨',
     description: 'Create and save your own activities',
   },
+  scheduling: {
+    name: 'Activity Scheduling',
+    icon: '📅',
+    description: 'Plan your week with scheduled activities and reminders',
+  },
   prioritySupport: {
     name: 'Priority Support',
     icon: '💬',
@@ -101,6 +193,26 @@ export const FEATURE_DESCRIPTIONS = {
     name: 'Offline Mode',
     icon: '📴',
     description: 'Use PlayCompass without internet connection',
+  },
+  seasonalActivities: {
+    name: 'Seasonal Activities',
+    icon: '🍂',
+    description: 'Access to season-specific activities for spring, summer, fall, and winter',
+  },
+  weatherAware: {
+    name: 'Weather-Aware Suggestions',
+    icon: '🌦️',
+    description: 'Get activity suggestions based on current weather conditions',
+  },
+  detailedInstructions: {
+    name: 'Step-by-Step Instructions',
+    icon: '📝',
+    description: 'Detailed instructions, pro tips, and creative variations for each activity',
+  },
+  progressTracking: {
+    name: 'Progress Tracking',
+    icon: '📊',
+    description: 'Track achievements, earn badges, and see detailed monthly reports',
   },
 };
 
@@ -294,15 +406,19 @@ export const updateSubscription = async (userId, tier, purchaseInfo = null) => {
 };
 
 /**
- * Get subscription status from Firestore
+ * Get subscription status from Firestore (includes trial checking)
  */
 export const getSubscriptionStatus = async (userId) => {
   try {
-    const doc = await firestore().collection('users').doc(userId).get();
-    if (doc.exists) {
-      const subscription = doc.data()?.subscription || { tier: 'free' };
+    const docRef = firestore().collection('users').doc(userId);
+    const doc = await docRef.get();
 
-      // Check if subscription has expired
+    if (doc.exists) {
+      const data = doc.data();
+      const subscription = data?.subscription || { tier: 'free' };
+      const trialStartDate = data?.trialStartDate;
+
+      // Check if subscription has expired (for paid subscriptions)
       if (subscription.expiresAt) {
         const expiresAt = subscription.expiresAt.toDate
           ? subscription.expiresAt.toDate()
@@ -314,18 +430,50 @@ export const getSubscriptionStatus = async (userId) => {
         }
       }
 
+      // If user has a paid subscription, return it (no trial needed)
+      if (subscription.tier && subscription.tier !== 'free') {
+        return subscription;
+      }
+
+      // Check trial status for free tier users
+      if (trialStartDate) {
+        const trialStatus = getTrialStatus(trialStartDate);
+        return {
+          ...subscription,
+          ...trialStatus,
+        };
+      }
+
+      // New user - no trial started yet, start one now
+      if (!trialStartDate) {
+        console.log('[Subscription] Starting trial for new user:', userId);
+        await docRef.update({
+          trialStartDate: firestore.FieldValue.serverTimestamp(),
+        });
+        // Return trial status as if it just started
+        const newTrialStatus = getTrialStatus(new Date());
+        return {
+          tier: 'free',
+          ...newTrialStatus,
+        };
+      }
+
       return subscription;
     }
-    return { tier: 'free' };
+
+    return { tier: 'free', isInTrial: false, daysRemaining: 0 };
   } catch (error) {
     console.error('Error getting subscription:', error);
-    return { tier: 'free' };
+    return { tier: 'free', isInTrial: false, daysRemaining: 0 };
   }
 };
 
 export default {
   SUBSCRIPTION_TIERS,
   FEATURE_DESCRIPTIONS,
+  TRIAL_DURATION_DAYS,
+  getTrialStatus,
+  startTrial,
   getUsageStats,
   saveUsageStats,
   resetUsageStats,

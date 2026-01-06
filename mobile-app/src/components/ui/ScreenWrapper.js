@@ -10,8 +10,15 @@
 import React from 'react';
 import { View, StyleSheet, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../context/ThemeContext';
+
+// Dynamically import LinearGradient to handle cases where native module isn't available
+let LinearGradient = null;
+try {
+  LinearGradient = require('expo-linear-gradient').LinearGradient;
+} catch (e) {
+  console.warn('[ScreenWrapper] expo-linear-gradient not available, using fallback');
+}
 
 const ScreenWrapper = ({
   children,
@@ -61,7 +68,7 @@ const ScreenWrapper = ({
     </SafeAreaView>
   );
 
-  if (withGradient) {
+  if (withGradient && LinearGradient) {
     return (
       <LinearGradient colors={gradientColors} style={styles.container}>
         {content}

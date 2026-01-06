@@ -23,6 +23,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
+import { useSubscription } from '../context/SubscriptionContext';
 import { ScreenWrapper, IconButton } from '../components';
 
 const ProfileScreen = () => {
@@ -37,9 +38,9 @@ const ProfileScreen = () => {
     deleteAccount,
     loading,
     kids,
-    subscription,
   } = useAuth();
   const { colors, isDark, toggleTheme, themeMode } = useTheme();
+  const { subscription, usage } = useSubscription();
   const insets = useSafeAreaInsets();
   const [actionLoading, setActionLoading] = useState(null);
 
@@ -157,7 +158,7 @@ const ProfileScreen = () => {
         </View>
         <View style={styles.statItem}>
           <Text style={[styles.statValue, { color: colors.secondary.main }]}>
-            {subscription?.dailyRecsUsed || 0}
+            {usage?.recommendations?.used || 0}
           </Text>
           <Text style={[styles.statLabel, { color: colors.text.secondary }]}>
             Recs Today
@@ -175,6 +176,44 @@ const ProfileScreen = () => {
           </Text>
         </TouchableOpacity>
       </View>
+    </View>
+  );
+
+  const renderMyStuffSection = () => (
+    <View style={[styles.section, { backgroundColor: colors.surface.primary }]}>
+      <Text style={[styles.sectionTitle, { color: colors.text.secondary }]}>MY STUFF</Text>
+
+      {/* Saved Activities */}
+      <TouchableOpacity
+        style={[styles.settingRow, { borderBottomColor: colors.border.light }]}
+        onPress={() => navigation.navigate('SavedActivities')}
+      >
+        <View style={styles.settingLeft}>
+          <Text style={styles.settingIcon}>❤️</Text>
+          <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+            Saved Activities
+          </Text>
+        </View>
+        <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
+          →
+        </Text>
+      </TouchableOpacity>
+
+      {/* My Activities (Custom) */}
+      <TouchableOpacity
+        style={[styles.settingRow, { borderBottomColor: 'transparent' }]}
+        onPress={() => navigation.navigate('CustomActivities')}
+      >
+        <View style={styles.settingLeft}>
+          <Text style={styles.settingIcon}>🎨</Text>
+          <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+            My Activities
+          </Text>
+        </View>
+        <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
+          →
+        </Text>
+      </TouchableOpacity>
     </View>
   );
 
@@ -274,6 +313,7 @@ const ProfileScreen = () => {
 
         {renderAccountSection()}
         {renderStatsSection()}
+        {renderMyStuffSection()}
         {renderSettingsSection()}
         {renderActionsSection()}
 

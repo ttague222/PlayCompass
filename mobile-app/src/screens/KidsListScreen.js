@@ -23,17 +23,17 @@ const KidsListScreen = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { kids, canAddKid, maxKids, getAgeGroup, INTERESTS } = useKids();
-  const { tier, isPremium, allTiers } = useSubscription();
+  const { effectiveTier, isPremium, allTiers } = useSubscription();
   const insets = useSafeAreaInsets();
 
-  // Get upgrade info for users at their limit
+  // Get upgrade info for users at their limit (uses effectiveTier for trial support)
   const getUpgradeInfo = () => {
-    if (tier === 'free') {
+    if (effectiveTier === 'free') {
       return {
         targetTier: allTiers.plus,
         message: `Upgrade to ${allTiers.plus.name} for up to ${allTiers.plus.features.maxKids} children`,
       };
-    } else if (tier === 'plus') {
+    } else if (effectiveTier === 'plus') {
       return {
         targetTier: allTiers.family,
         message: `Upgrade to ${allTiers.family.name} for up to ${allTiers.family.features.maxKids} children`,
@@ -89,7 +89,7 @@ const KidsListScreen = () => {
         </View>
 
         {interestItems.length > 0 && (
-          <View style={styles.interestsRow}>
+          <View style={[styles.interestsRow, { borderTopColor: colors.border.light }]}>
             {interestItems.map((interest) => (
               <View
                 key={interest.id}
@@ -275,7 +275,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
     gap: 8,
   },
   interestTag: {
