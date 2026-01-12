@@ -32,8 +32,8 @@ try {
 
 // RevenueCat API keys
 const REVENUECAT_API_KEYS = {
-  ios: 'test_ycTHGMubpEaTHbnahLzhPoiHAgK',
-  android: 'test_ycTHGMubpEaTHbnahLzhPoiHAgK',
+  ios: 'test_ycTHGMubpEaTHbnahLzhPoiHAgK', // TODO: Add iOS key when ready
+  android: 'goog_lgSPiIvpocHRmPfRNoyMxvLIyga',
 };
 
 // Product identifiers - these should match your RevenueCat products

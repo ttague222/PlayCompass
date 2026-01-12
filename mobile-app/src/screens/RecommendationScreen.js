@@ -5,7 +5,7 @@
  * Uses backend API with fallback to local data
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -29,9 +29,9 @@ import { Analytics, addBreadcrumb } from '../services';
 import { useSubscription } from '../context/SubscriptionContext';
 import {
   recordSwipe,
-  getRecentlySeenActivityIds,
   getExcludedActivityIds,
   getLearningMessage,
+  getCategoryBoosts,
 } from '../services/preferenceLearningService';
 import { getActivityWeatherTag, isActivitySuitableForWeather } from '../services/weatherService';
 
@@ -511,9 +511,20 @@ const RecommendationScreen = () => {
 
   // Fetch recommendations from API or fall back to local
   useEffect(() => {
+    // Create abort controller to cancel previous requests
+    const abortController = new AbortController();
+    let isCancelled = false;
+
     const fetchRecommendations = async () => {
       setLoading(true);
       setError(null);
+
+      // Validate kids array before proceeding
+      if (!kids || kids.length === 0) {
+        setError('No kids selected');
+        setLoading(false);
+        return;
+      }
 
       // If we have a surprise activity, just use that
       if (surpriseActivity) {
@@ -523,8 +534,10 @@ const RecommendationScreen = () => {
           adultSupervision: surpriseActivity.adult_supervision,
           popularityScore: surpriseActivity.popularity_score,
         };
-        setRecommendations([activity]);
-        setLoading(false);
+        if (!isCancelled) {
+          setRecommendations([activity]);
+          setLoading(false);
+        }
         addBreadcrumb('Surprise activity loaded', 'recommendation', { activityId: activity.id });
         Analytics.startSession(duration, kids.length);
         await recordRecommendationUsage();
@@ -537,15 +550,21 @@ const RecommendationScreen = () => {
       // Record usage for subscription tracking
       await recordRecommendationUsage();
 
-      // Get activities to exclude based on learning
-      const [recentIds, excludedIds] = await Promise.all([
-        getRecentlySeenActivityIds(1), // Activities seen in last day
-        getExcludedActivityIds(2), // Activities passed 2+ times
+      // Get activities to exclude and category boosts based on learning
+      // Note: We only exclude activities that were explicitly passed multiple times
+      // Recently seen activities are NOT excluded - users may want to do them again
+      const [excludedIds, categoryBoosts] = await Promise.all([
+        getExcludedActivityIds(3, 30), // Activities passed 3+ times in last 30 days
+        getCategoryBoosts(), // Preference-based category boosts
       ]);
-      const excludedActivityIds = [...new Set([...recentIds, ...excludedIds])];
+
+      // Check if request was cancelled during async operations
+      if (isCancelled) return;
+
+      const excludedActivityIds = excludedIds;
       addBreadcrumb('Excluding activities from learning', 'recommendation', {
-        recentCount: recentIds.length,
         excludedCount: excludedIds.length,
+        hasCategoryBoosts: Object.keys(categoryBoosts).length > 0,
       });
 
       // Determine current season for filtering
@@ -568,12 +587,15 @@ const RecommendationScreen = () => {
           location: location || 'both',
           energy,
           materials,
-          season: seasonFilter === 'current' ? getCurrentSeason() : 'any',
-          weatherTag: weatherTag,
+          season: seasonFilter === 'current' ? getCurrentSeason() : null,
+          weather: weatherTag, // Pass weather tag (sunny, rainy, etc.) to API
           subscriptionTier: effectiveTier || 'free',
           excludedActivityIds,
-          count: 15,
+          count: 10,
         });
+
+        // Check if request was cancelled
+        if (isCancelled) return;
 
         if (response.activities && response.activities.length > 0) {
           // Transform API response to match local format
@@ -585,20 +607,60 @@ const RecommendationScreen = () => {
             relevanceScore: a.relevance_score,
           }));
 
-          // Apply client-side weather filtering if weather is provided
-          if (weatherTag) {
-            activities = activities.filter((a) => isActivitySuitableForWeather(a, weatherTag));
-          }
+          // If API returned fewer than requested, supplement with local data
+          const targetCount = 10;
+          if (activities.length < targetCount) {
+            addBreadcrumb('Supplementing API results with local data', 'recommendation', {
+              apiCount: activities.length,
+              targetCount,
+            });
 
-          // Apply seasonal filtering client-side as backup
-          if (seasonFilter === 'current') {
-            const currentSeason = getCurrentSeason();
-            activities = activities.filter((a) =>
-              !a.season || a.season === 'any' || a.season === currentSeason
+            const durationObj = DURATIONS[duration?.toUpperCase()];
+            const availableTime = durationObj?.max || 60;
+
+            // Get IDs of activities we already have from API
+            const apiActivityIds = new Set(activities.map((a) => a.id));
+
+            // Get local recommendations, excluding activities already from API
+            let localRecommendations = getRecommendedActivities(kids, {
+              count: targetCount * 2, // Get extra to filter from
+              location: location !== 'both' ? location : undefined,
+              availableTime,
+              energy,
+              materials,
+              categoryBoosts,
+            });
+
+            // Filter out activities we already have from API and ones that were excluded
+            const excludedSet = new Set(excludedActivityIds);
+            localRecommendations = localRecommendations.filter((a) =>
+              !apiActivityIds.has(a.id) && !excludedSet.has(a.id)
             );
+
+            if (weatherTag) {
+              localRecommendations = localRecommendations.filter((a) =>
+                isActivitySuitableForWeather(a, weatherTag)
+              );
+            }
+
+            if (seasonFilter === 'current') {
+              const currentSeason = getCurrentSeason();
+              localRecommendations = localRecommendations.filter((a) =>
+                !a.season || a.season === 'any' || a.season === currentSeason
+              );
+            }
+
+            // Add local activities to reach target count
+            const needed = targetCount - activities.length;
+            activities = [...activities, ...localRecommendations.slice(0, needed)];
           }
 
-          setRecommendations(activities);
+          // Note: Weather and seasonal filtering are handled server-side via API params
+          // We don't apply them again client-side to avoid double-filtering
+
+          if (!isCancelled) {
+            setRecommendations(activities);
+          }
           addBreadcrumb('Recommendations loaded from API', 'recommendation', {
             count: activities.length,
             weatherFiltered: !!weatherTag,
@@ -608,6 +670,9 @@ const RecommendationScreen = () => {
           throw new Error('No activities returned');
         }
       } catch (err) {
+        // Check if request was cancelled
+        if (isCancelled) return;
+
         console.log('API failed, falling back to local data:', err.message);
         addBreadcrumb('API failed, using local data', 'recommendation', { error: err.message });
 
@@ -616,10 +681,12 @@ const RecommendationScreen = () => {
         const availableTime = durationObj?.max || 60;
 
         let localRecommendations = getRecommendedActivities(kids, {
-          count: 15,
+          count: 10,
           location: location !== 'both' ? location : undefined,
           availableTime,
           energy,
+          materials, // Apply materials filter (null = any)
+          categoryBoosts, // Apply preference-based boosts
         });
 
         // Apply weather filtering to local recommendations
@@ -637,13 +704,23 @@ const RecommendationScreen = () => {
           );
         }
 
-        setRecommendations(localRecommendations);
+        if (!isCancelled) {
+          setRecommendations(localRecommendations);
+        }
       } finally {
-        setLoading(false);
+        if (!isCancelled) {
+          setLoading(false);
+        }
       }
     };
 
     fetchRecommendations();
+
+    // Cleanup function to cancel request on unmount or dependency change
+    return () => {
+      isCancelled = true;
+      abortController.abort();
+    };
   }, [kids, duration, location, energy, materials, surpriseActivity, weather, seasonFilter]);
 
   const position = useState(new Animated.ValueXY())[0];
@@ -651,24 +728,33 @@ const RecommendationScreen = () => {
   const currentActivity = recommendations[currentIndex];
   const isLastCard = currentIndex >= recommendations.length && recommendations.length > 0;
 
+  // Use ref to always get the latest activity (avoids stale closure issues)
+  const currentActivityRef = useRef(currentActivity);
+  useEffect(() => {
+    currentActivityRef.current = currentActivity;
+  }, [currentActivity]);
+
   const handleBack = () => {
     navigation.goBack();
   };
 
   const handleAccept = useCallback(async () => {
-    if (!currentActivity) return;
+    // Use ref to get the latest activity (avoids stale closure)
+    const activity = currentActivityRef.current;
+    if (!activity) return;
 
-    setAcceptedActivities((prev) => [...prev, currentActivity]);
-    Analytics.likeActivity(currentActivity.id, currentActivity.title, currentActivity.category);
+    setAcceptedActivities((prev) => [...prev, activity]);
+    Analytics.likeActivity(activity.id, activity.title, activity.category);
 
-    // Save to history immediately (liked = true)
-    saveActivityToHistory(currentActivity, true, duration);
-
-    // Record swipe for preference learning
-    await recordSwipe(currentActivity, true);
+    // Save to history and record swipe - await both to ensure data persistence
+    await Promise.all([
+      saveActivityToHistory(activity, true, duration),
+      recordSwipe(activity, true),
+    ]);
 
     // Check for learning message update (after every few swipes)
-    if (kids && kids.length > 0) {
+    // Safely access kids array
+    if (kids && kids.length > 0 && kids[0]?.name) {
       const message = await getLearningMessage(kids[0].name);
       if (message) {
         setLearningMessage(message);
@@ -682,19 +768,21 @@ const RecommendationScreen = () => {
       position.setValue({ x: 0, y: 0 });
       setCurrentIndex((prev) => prev + 1);
     });
-  }, [currentActivity, position, saveActivityToHistory, duration, kids]);
+  }, [position, saveActivityToHistory, duration, kids]);
 
   const handleReject = useCallback(async () => {
-    if (!currentActivity) return;
+    // Use ref to get the latest activity (avoids stale closure)
+    const activity = currentActivityRef.current;
+    if (!activity) return;
 
-    setRejectedActivities((prev) => [...prev, currentActivity]);
-    Analytics.skipActivity(currentActivity.id, currentActivity.title, currentActivity.category);
+    setRejectedActivities((prev) => [...prev, activity]);
+    Analytics.skipActivity(activity.id, activity.title, activity.category);
 
-    // Save to history immediately (liked = false)
-    saveActivityToHistory(currentActivity, false, duration);
-
-    // Record swipe for preference learning
-    await recordSwipe(currentActivity, false);
+    // Save to history and record swipe - await both to ensure data persistence
+    await Promise.all([
+      saveActivityToHistory(activity, false, duration),
+      recordSwipe(activity, false),
+    ]);
 
     Animated.spring(position, {
       toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
@@ -703,7 +791,7 @@ const RecommendationScreen = () => {
       position.setValue({ x: 0, y: 0 });
       setCurrentIndex((prev) => prev + 1);
     });
-  }, [currentActivity, position, saveActivityToHistory, duration]);
+  }, [position, saveActivityToHistory, duration]);
 
   const panResponder = useMemo(
     () =>
@@ -828,9 +916,9 @@ const RecommendationScreen = () => {
 
           {/* Personalized recommendation line */}
           {kids && kids.length > 0 && (
-            <View style={[styles.personalizedBadge, { backgroundColor: colors.secondary.light }]}>
+            <View style={[styles.personalizedBadge, { backgroundColor: colors.primary.main + '20' }]}>
               <Text style={styles.personalizedIcon}>💡</Text>
-              <Text style={[styles.personalizedText, { color: colors.text.primary }]}>
+              <Text style={[styles.personalizedText, { color: colors.text.secondary }]}>
                 {getPersonalizedReason(currentActivity, kids)}
               </Text>
             </View>
@@ -948,6 +1036,32 @@ const RecommendationScreen = () => {
     );
   }
 
+  // Error state
+  if (error) {
+    return (
+      <ScreenWrapper edges={['top', 'left', 'right', 'bottom']}>
+        <View style={styles.header}>
+          <IconButton icon="←" onPress={handleBack} variant="ghost" size="md" />
+          <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Oops</Text>
+          <View style={{ width: 44 }} />
+        </View>
+        <View style={styles.cardContainer}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>😕</Text>
+          <Text style={[styles.loadingText, { color: colors.text.secondary, textAlign: 'center' }]}>
+            {error}
+          </Text>
+          <Button
+            variant="primary"
+            onPress={handleBack}
+            style={{ marginTop: 24 }}
+          >
+            Go Back
+          </Button>
+        </View>
+      </ScreenWrapper>
+    );
+  }
+
   return (
     <ScreenWrapper edges={['top', 'left', 'right']}>
       {/* Header */}
@@ -990,14 +1104,6 @@ const RecommendationScreen = () => {
         </View>
       )}
 
-      {/* Swipe Hint */}
-      {!isLastCard && currentIndex === 0 && (
-        <View style={[styles.hintContainer, { bottom: Math.max(insets.bottom, 20) + 100 }]}>
-          <Text style={[styles.hintText, { color: colors.text.tertiary }]}>
-            Swipe right to do it, left for something else
-          </Text>
-        </View>
-      )}
     </ScreenWrapper>
   );
 };
@@ -1111,16 +1217,18 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 12,
     marginBottom: 20,
-    width: '100%',
+    alignSelf: 'stretch',
   },
   personalizedIcon: {
     fontSize: 18,
     marginRight: 10,
+    flexShrink: 0,
   },
   personalizedText: {
     fontSize: 14,
     fontWeight: '500',
     flex: 1,
+    flexWrap: 'wrap',
   },
   pillsRow: {
     flexDirection: 'row',
@@ -1162,13 +1270,6 @@ const styles = StyleSheet.create({
   actionButtonLabel: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  hintContainer: {
-    alignItems: 'center',
-    paddingBottom: 20,
-  },
-  hintText: {
-    fontSize: 12,
   },
   // Completed view
   completedContainer: {

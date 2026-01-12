@@ -34,6 +34,7 @@ const ProfileScreen = () => {
     displayName,
     photoURL,
     signInWithGoogle,
+    signInWithEmail,
     signOut,
     deleteAccount,
     loading,
@@ -45,9 +46,21 @@ const ProfileScreen = () => {
   const [actionLoading, setActionLoading] = useState(null);
 
   const handleLinkGoogle = async () => {
+    // Capture anonymous state before sign-in (it will change after linking)
+    const wasAnonymous = isAnonymous;
+
     setActionLoading('link');
-    await signInWithGoogle();
+    const result = await signInWithGoogle();
     setActionLoading(null);
+
+    // Show success message when anonymous user links with Google
+    if (result.success && wasAnonymous) {
+      Alert.alert(
+        'Account Linked',
+        'Your Google account has been linked successfully. Your data is now synced across devices.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   const handleSignOut = () => {
@@ -102,7 +115,7 @@ const ProfileScreen = () => {
             <Image source={{ uri: photoURL }} style={styles.avatarImage} />
           ) : (
             <Text style={styles.avatarText}>
-              {displayName ? displayName.charAt(0).toUpperCase() : '👤'}
+              {displayName ? displayName.charAt(0).toUpperCase() : '?'}
             </Text>
           )}
         </View>
@@ -121,24 +134,43 @@ const ProfileScreen = () => {
         </View>
       </View>
 
-      {/* Link Account (for anonymous users) */}
+      {/* Sign In Options (for anonymous/guest users) */}
       {isAnonymous && (
-        <TouchableOpacity
-          style={[styles.linkButton, { borderColor: colors.primary.main }]}
-          onPress={handleLinkGoogle}
-          disabled={loading || !!actionLoading}
-        >
-          {actionLoading === 'link' ? (
-            <ActivityIndicator color={colors.primary.main} />
-          ) : (
-            <>
-              <Text style={styles.linkIcon}>G</Text>
-              <Text style={[styles.linkButtonText, { color: colors.primary.main }]}>
-                Link Google Account
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+        <View style={styles.signInOptions}>
+          <Text style={[styles.signInPrompt, { color: colors.text.secondary }]}>
+            Sign in to sync your data across devices
+          </Text>
+
+          {/* Google Sign In */}
+          <TouchableOpacity
+            style={[styles.linkButton, { borderColor: '#4285F4', marginBottom: 10 }]}
+            onPress={handleLinkGoogle}
+            disabled={loading || !!actionLoading}
+          >
+            {actionLoading === 'link' ? (
+              <ActivityIndicator color="#4285F4" />
+            ) : (
+              <>
+                <Text style={styles.linkIcon}>G</Text>
+                <Text style={[styles.linkButtonText, { color: '#4285F4' }]}>
+                  Continue with Google
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
+
+          {/* Email Sign In */}
+          <TouchableOpacity
+            style={[styles.linkButton, { borderColor: colors.primary.main }]}
+            onPress={() => navigation.navigate('EmailSignIn')}
+            disabled={loading || !!actionLoading}
+          >
+            <Text style={[styles.emailIcon, { color: colors.primary.main }]}>@</Text>
+            <Text style={[styles.linkButtonText, { color: colors.primary.main }]}>
+              Continue with Email
+            </Text>
+          </TouchableOpacity>
+        </View>
       )}
     </View>
   );
@@ -188,12 +220,9 @@ const ProfileScreen = () => {
         style={[styles.settingRow, { borderBottomColor: colors.border.light }]}
         onPress={() => navigation.navigate('SavedActivities')}
       >
-        <View style={styles.settingLeft}>
-          <Text style={styles.settingIcon}>❤️</Text>
-          <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
-            Saved Activities
-          </Text>
-        </View>
+        <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+          Saved Activities
+        </Text>
         <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
           →
         </Text>
@@ -204,12 +233,9 @@ const ProfileScreen = () => {
         style={[styles.settingRow, { borderBottomColor: 'transparent' }]}
         onPress={() => navigation.navigate('CustomActivities')}
       >
-        <View style={styles.settingLeft}>
-          <Text style={styles.settingIcon}>🎨</Text>
-          <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
-            My Activities
-          </Text>
-        </View>
+        <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+          My Activities
+        </Text>
         <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
           →
         </Text>
@@ -226,12 +252,9 @@ const ProfileScreen = () => {
         style={[styles.settingRow, { borderBottomColor: colors.border.light }]}
         onPress={toggleTheme}
       >
-        <View style={styles.settingLeft}>
-          <Text style={styles.settingIcon}>{isDark ? '🌙' : '☀️'}</Text>
-          <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
-            Dark Mode
-          </Text>
-        </View>
+        <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+          Dark Mode
+        </Text>
         <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
           {themeMode === 'dark' ? 'On' : 'Off'}
         </Text>
@@ -241,12 +264,9 @@ const ProfileScreen = () => {
       <TouchableOpacity
         style={[styles.settingRow, { borderBottomColor: colors.border.light }]}
       >
-        <View style={styles.settingLeft}>
-          <Text style={styles.settingIcon}>🔔</Text>
-          <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
-            Notifications
-          </Text>
-        </View>
+        <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+          Notifications
+        </Text>
         <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
           On
         </Text>
@@ -267,12 +287,9 @@ const ProfileScreen = () => {
         {actionLoading === 'signout' ? (
           <ActivityIndicator color={colors.text.primary} />
         ) : (
-          <>
-            <Text style={styles.actionIcon}>🚪</Text>
-            <Text style={[styles.actionLabel, { color: colors.text.primary }]}>
-              Sign Out
-            </Text>
-          </>
+          <Text style={[styles.actionLabel, { color: colors.text.primary }]}>
+            Sign Out
+          </Text>
         )}
       </TouchableOpacity>
 
@@ -285,12 +302,9 @@ const ProfileScreen = () => {
         {actionLoading === 'delete' ? (
           <ActivityIndicator color={colors.error.main} />
         ) : (
-          <>
-            <Text style={styles.actionIcon}>🗑️</Text>
-            <Text style={[styles.actionLabel, { color: colors.error.main }]}>
-              Delete Account
-            </Text>
-          </>
+          <Text style={[styles.actionLabel, { color: colors.error.main }]}>
+            Delete Account
+          </Text>
         )}
       </TouchableOpacity>
     </View>
@@ -426,6 +440,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
+  signInOptions: {
+    marginTop: 8,
+  },
+  signInPrompt: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  emailIcon: {
+    fontSize: 16,
+    marginRight: 8,
+  },
   statsGrid: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -449,14 +475,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
   },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  settingIcon: {
-    fontSize: 20,
-    marginRight: 12,
-  },
   settingLabel: {
     fontSize: 16,
     fontWeight: '500',
@@ -470,10 +488,6 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderBottomWidth: 1,
     borderBottomColor: 'transparent',
-  },
-  actionIcon: {
-    fontSize: 20,
-    marginRight: 12,
   },
   actionLabel: {
     fontSize: 16,

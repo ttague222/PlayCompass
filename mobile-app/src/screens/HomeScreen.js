@@ -24,7 +24,7 @@ const HomeScreen = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { kids, hasKids, getAgeRangeString } = useKids();
-  const { usage, checkCanGetRecommendations, isPremium, isInTrial, daysRemaining, trialExpired } = useSubscription();
+  const { usage, checkCanGetRecommendations, isPremium, isInTrial, daysRemaining, trialExpired, loading: subscriptionLoading } = useSubscription();
 
   const [showPaywall, setShowPaywall] = useState(false);
   const [recommendationsAllowed, setRecommendationsAllowed] = useState(true);
@@ -63,40 +63,38 @@ const HomeScreen = () => {
       {/* Top Bar with overflow menu */}
       <TopBar />
 
-      {/* Trial Banner */}
-      {isInTrial && (
+      {/* Welcome Bonus Banner - only show after subscription loaded */}
+      {!subscriptionLoading && isInTrial && (
         <TouchableOpacity
           style={[styles.trialBanner, { backgroundColor: colors.secondary.light }]}
           onPress={() => navigation.navigate('Subscription')}
           activeOpacity={0.8}
         >
-          <Text style={styles.trialIcon}>🎁</Text>
           <View style={styles.trialTextContainer}>
             <Text style={[styles.trialTitle, { color: colors.text.primary }]}>
-              Free Trial Active
+              Welcome Bonus Active
             </Text>
             <Text style={[styles.trialSubtext, { color: colors.text.secondary }]}>
-              {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'} left • Tap to subscribe
+              {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'} of bonus features remaining
             </Text>
           </View>
           <Text style={[styles.trialArrow, { color: colors.secondary.dark }]}>→</Text>
         </TouchableOpacity>
       )}
 
-      {/* Trial Expired Banner */}
-      {trialExpired && !isPremium && (
+      {/* Bonus Ended Banner - only show after subscription loaded */}
+      {!subscriptionLoading && trialExpired && !isPremium && (
         <TouchableOpacity
           style={[styles.trialBanner, { backgroundColor: colors.warning.light }]}
           onPress={() => navigation.navigate('Subscription')}
           activeOpacity={0.8}
         >
-          <Text style={styles.trialIcon}>⏰</Text>
           <View style={styles.trialTextContainer}>
             <Text style={[styles.trialTitle, { color: colors.text.primary }]}>
-              Trial Ended
+              Welcome Bonus Ended
             </Text>
             <Text style={[styles.trialSubtext, { color: colors.text.secondary }]}>
-              Subscribe to keep all features • Tap to upgrade
+              Upgrade for premium features • Tap to view plans
             </Text>
           </View>
           <Text style={[styles.trialArrow, { color: colors.warning.dark }]}>→</Text>
@@ -105,9 +103,9 @@ const HomeScreen = () => {
 
       {/* Main Content - Centered CTA */}
       <View style={styles.mainContent}>
-        {/* Big Visual */}
-        <View style={[styles.heroContainer, { backgroundColor: colors.surface.secondary }]}>
-          <Text style={styles.heroEmoji}>🎯</Text>
+        {/* Big Visual - Compass icon */}
+        <View style={[styles.heroContainer, { backgroundColor: colors.primary.main + '15' }]}>
+          <Text style={styles.heroEmoji}>🧭</Text>
         </View>
 
         {/* Headline */}
@@ -138,7 +136,6 @@ const HomeScreen = () => {
             variant="primary"
             size="lg"
             fullWidth
-            icon="✨"
             disabled={!recommendationsAllowed && !isPremium && hasKids}
           >
             {!hasKids
@@ -191,7 +188,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
-    paddingBottom: 40,
+    paddingBottom: 100, // Extra space for FAB button
+    marginTop: -20, // Slight upward shift to balance with banner
   },
   heroContainer: {
     width: 120,
@@ -199,7 +197,7 @@ const styles = StyleSheet.create({
     borderRadius: 60,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 24,
   },
   heroEmoji: {
     fontSize: 56,
@@ -222,7 +220,7 @@ const styles = StyleSheet.create({
   },
   ctaContainer: {
     width: '100%',
-    marginTop: 40,
+    marginTop: 32,
     alignItems: 'center',
   },
   usageText: {
@@ -245,10 +243,6 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 23,
     borderRadius: 12,
-  },
-  trialIcon: {
-    fontSize: 24,
-    marginRight: 12,
   },
   trialTextContainer: {
     flex: 1,

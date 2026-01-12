@@ -39,8 +39,8 @@ const SubscriptionScreen = () => {
   const insets = useSafeAreaInsets();
   const [restoring, setRestoring] = useState(false);
 
-  // Calculate days remaining in trial
-  const getTrialDaysRemaining = () => {
+  // Calculate days remaining in welcome bonus period
+  const getBonusDaysRemaining = () => {
     if (!isTrialPeriod || !trialEndsAt) return 0;
     const now = new Date();
     const end = new Date(trialEndsAt);
@@ -169,7 +169,7 @@ const SubscriptionScreen = () => {
         {isCurrentTier && (
           <View style={[styles.currentBadge, { backgroundColor: colors.primary.main }]}>
             <Text style={styles.currentBadgeText}>
-              {isTrialPeriod ? 'TRIAL' : 'CURRENT PLAN'}
+              {isTrialPeriod ? 'BONUS ACTIVE' : 'CURRENT PLAN'}
             </Text>
           </View>
         )}
@@ -262,7 +262,7 @@ const SubscriptionScreen = () => {
                 disabled={purchaseLoading || restoring}
               >
                 {trialInfo
-                  ? `Start ${trialInfo.duration} Free Trial`
+                  ? `Try Free for ${trialInfo.duration}`
                   : tierData.price === 0
                     ? 'Downgrade'
                     : `Subscribe - ${tierData.priceLabel}`}
@@ -311,7 +311,7 @@ const SubscriptionScreen = () => {
         contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
-        {/* Trial Period Banner */}
+        {/* Welcome Bonus Period Banner */}
         {isTrialPeriod && (
           <Card
             variant="filled"
@@ -321,17 +321,17 @@ const SubscriptionScreen = () => {
               <Text style={styles.trialIcon}>🎁</Text>
               <View style={styles.trialTextContainer}>
                 <Text style={[styles.trialTitle, { color: colors.warning.dark }]}>
-                  Free Trial Active
+                  Welcome Bonus Active
                 </Text>
                 <Text style={[styles.trialSubtitle, { color: colors.warning.dark }]}>
-                  {getTrialDaysRemaining() > 0
-                    ? `${getTrialDaysRemaining()} day${getTrialDaysRemaining() !== 1 ? 's' : ''} remaining`
-                    : 'Trial ends today'}
+                  {getBonusDaysRemaining() > 0
+                    ? `${getBonusDaysRemaining()} day${getBonusDaysRemaining() !== 1 ? 's' : ''} of bonus features remaining`
+                    : 'Bonus period ends today'}
                 </Text>
               </View>
             </View>
             <Text style={[styles.trialNote, { color: colors.warning.dark }]}>
-              You have full access to {tierConfig?.name} features during your trial.
+              You have full access to {tierConfig?.name} features during your welcome period.
             </Text>
           </Card>
         )}

@@ -198,6 +198,64 @@ export const updateUserPreferences = async (uid, preferences) => {
 };
 
 /**
+ * Sign in with email and password
+ */
+export const signInWithEmail = async (email, password) => {
+  try {
+    const userCredential = await auth().signInWithEmailAndPassword(email, password);
+    await createOrUpdateUserProfile(userCredential.user);
+    return { success: true, user: userCredential.user };
+  } catch (error) {
+    console.error('Email sign-in error:', error);
+    return { success: false, error: error.message, code: error.code };
+  }
+};
+
+/**
+ * Sign up with email and password
+ */
+export const signUpWithEmail = async (email, password) => {
+  try {
+    // Check if user is currently anonymous
+    const currentUser = auth().currentUser;
+    let userCredential;
+
+    if (currentUser?.isAnonymous) {
+      // Link anonymous account with email/password
+      const credential = auth.EmailAuthProvider.credential(email, password);
+      try {
+        userCredential = await currentUser.linkWithCredential(credential);
+      } catch (linkError) {
+        // Re-throw all linking errors (including email-already-in-use)
+        throw linkError;
+      }
+    } else {
+      // Create new account with email/password
+      userCredential = await auth().createUserWithEmailAndPassword(email, password);
+    }
+
+    await createOrUpdateUserProfile(userCredential.user);
+    return { success: true, user: userCredential.user };
+  } catch (error) {
+    console.error('Email sign-up error:', error);
+    return { success: false, error: error.message, code: error.code };
+  }
+};
+
+/**
+ * Send password reset email
+ */
+export const resetPassword = async (email) => {
+  try {
+    await auth().sendPasswordResetEmail(email);
+    return { success: true };
+  } catch (error) {
+    console.error('Password reset error:', error);
+    return { success: false, error: error.message, code: error.code };
+  }
+};
+
+/**
  * Delete user account and all associated data
  * This includes:
  * - User document in Firestore
@@ -304,6 +362,9 @@ export const deleteAccount = async () => {
 export default {
   signInAnonymously,
   signInWithGoogle,
+  signInWithEmail,
+  signUpWithEmail,
+  resetPassword,
   signOut,
   createOrUpdateUserProfile,
   getUserProfile,

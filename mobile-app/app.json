@@ -25,7 +25,8 @@
       },
       "edgeToEdgeEnabled": true,
       "package": "com.playcompass.app",
-      "googleServicesFile": "./google-services.json"
+      "googleServicesFile": "./google-services.json",
+      "versionCode": 1
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,7 +46,6 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/notification-icon.png",
           "color": "#7c3aed"
         }
       ]

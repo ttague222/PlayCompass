@@ -38,12 +38,13 @@ const FABMenu = ({ onFindActivity }) => {
 
   // Menu items - simplified to frequent actions only
   // Bottom to top: Find Activity (primary) → Schedule → Saved → Kids → Settings
+  // Using simple text icons instead of emojis for cleaner look
   const menuItems = [
-    { id: 'settings', label: 'Settings', emoji: '⚙️', screen: 'Profile' },
-    { id: 'kids', label: 'Kids', emoji: '👶', screen: 'KidsList' },
-    { id: 'saved', label: 'Saved', emoji: '❤️', screen: 'SavedActivities' },
-    { id: 'schedule', label: 'Schedule', emoji: '📅', screen: 'Schedule' },
-    { id: 'find', label: 'Find Activity', emoji: '✨', action: 'find', isPrimary: true },
+    { id: 'settings', label: 'Settings', icon: '⚙', screen: 'Profile' },
+    { id: 'kids', label: 'Kids', icon: '👤', screen: 'KidsList' },
+    { id: 'saved', label: 'Saved', icon: '♡', screen: 'SavedActivities' },
+    { id: 'schedule', label: 'Schedule', icon: '◫', screen: 'Schedule' },
+    { id: 'find', label: 'Find Activity', icon: '→', action: 'find', isPrimary: true },
   ];
 
   // Calculate vertical position for each menu item (stacked above FAB)
@@ -191,10 +192,10 @@ const FABMenu = ({ onFindActivity }) => {
                 activeOpacity={0.8}
               >
                 <Text style={[
-                  styles.menuItemEmoji,
-                  item.isPrimary && styles.primaryEmoji,
+                  styles.menuItemIcon,
+                  { color: item.isPrimary ? '#fff' : colors.text.primary },
                 ]}>
-                  {item.emoji}
+                  {item.icon}
                 </Text>
                 {badge > 0 && (
                   <View style={[styles.badge, { backgroundColor: colors.error.main }]}>
@@ -278,11 +279,9 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  menuItemEmoji: {
-    fontSize: 20,
-  },
-  primaryEmoji: {
-    fontSize: 22,
+  menuItemIcon: {
+    fontSize: 18,
+    fontWeight: '600',
   },
   badge: {
     position: 'absolute',

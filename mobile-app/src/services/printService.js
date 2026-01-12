@@ -7,7 +7,6 @@
 // Dynamically import expo modules to handle cases where native modules aren't available
 let Print = null;
 let Sharing = null;
-let FileSystem = null;
 
 try {
   Print = require('expo-print');
@@ -19,12 +18,6 @@ try {
   Sharing = require('expo-sharing');
 } catch (e) {
   console.warn('[PrintService] expo-sharing not available');
-}
-
-try {
-  FileSystem = require('expo-file-system');
-} catch (e) {
-  console.warn('[PrintService] expo-file-system not available');
 }
 
 /**
@@ -508,23 +501,21 @@ const generateWeeklyPlanHTML = (activities, weekStart) => {
  * Generate and save PDF for activity kit
  */
 export const generateActivityKitPDF = async (activity, options = {}) => {
-  if (!Print || !FileSystem) {
+  if (!Print) {
     return { success: false, error: 'Print service not available. Rebuild the app to enable.' };
   }
 
   try {
     const html = generateActivityKitHTML(activity, options);
+    const fileName = `${activity.name.replace(/[^a-zA-Z0-9]/g, '_')}_activity_kit.pdf`;
+
+    // Generate PDF - printToFileAsync returns a usable URI directly
     const { uri } = await Print.printToFileAsync({
       html,
       base64: false,
     });
 
-    // Move to a more accessible location
-    const fileName = `${activity.name.replace(/[^a-zA-Z0-9]/g, '_')}_activity_kit.pdf`;
-    const newUri = `${FileSystem.documentDirectory}${fileName}`;
-    await FileSystem.moveAsync({ from: uri, to: newUri });
-
-    return { success: true, uri: newUri, fileName };
+    return { success: true, uri, fileName };
   } catch (error) {
     console.error('Error generating PDF:', error);
     return { success: false, error: error.message };
@@ -583,22 +574,21 @@ export const printActivityKit = async (activity, options = {}) => {
  * Generate weekly plan PDF
  */
 export const generateWeeklyPlanPDF = async (activities, weekStart) => {
-  if (!Print || !FileSystem) {
+  if (!Print) {
     return { success: false, error: 'Print service not available. Rebuild the app to enable.' };
   }
 
   try {
     const html = generateWeeklyPlanHTML(activities, weekStart);
+    const fileName = `weekly_plan_${weekStart.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+
+    // Generate PDF - printToFileAsync returns a usable URI directly
     const { uri } = await Print.printToFileAsync({
       html,
       base64: false,
     });
 
-    const fileName = `weekly_plan_${weekStart.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
-    const newUri = `${FileSystem.documentDirectory}${fileName}`;
-    await FileSystem.moveAsync({ from: uri, to: newUri });
-
-    return { success: true, uri: newUri, fileName };
+    return { success: true, uri, fileName };
   } catch (error) {
     console.error('Error generating weekly plan PDF:', error);
     return { success: false, error: error.message };

@@ -11,6 +11,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -20,6 +22,7 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { Card, Button, IconButton, Badge, ScreenWrapper, StarRating, RatingModal } from '../components';
 import { CATEGORIES, DURATIONS, ENERGY_LEVELS, MATERIALS, AGE_GROUPS } from '../data/activitySchema';
 import { isFeatureAvailable } from '../services/subscriptionService';
+import { shareActivityKitPDF, printActivityKit } from '../services/printService';
 
 const ActivityDetailScreen = () => {
   const navigation = useNavigation();
@@ -32,6 +35,7 @@ const ActivityDetailScreen = () => {
   const { activity } = route.params || {};
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [favorited, setFavorited] = useState(activity ? isFavorite(activity.id) : false);
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // Check if user has premium access for detailed instructions (uses effectiveTier for trial support)
   const hasDetailedInstructions = isFeatureAvailable('detailedInstructions', effectiveTier);
@@ -82,6 +86,34 @@ const ActivityDetailScreen = () => {
 
   const handleScheduleActivity = () => {
     navigation.navigate('Schedule', { activityToSchedule: activity });
+  };
+
+  const handleSharePDF = async () => {
+    setIsPrinting(true);
+    try {
+      // Transform activity data for the print service
+      const activityForPrint = {
+        name: activity.title,
+        description: activity.description,
+        duration: activity.duration,
+        category: CATEGORIES[activity.category?.toUpperCase()]?.label || activity.category,
+        location: activity.location,
+        ageRange: activity.ageGroups?.map(ag => AGE_GROUPS[ag?.toUpperCase()]?.label).filter(Boolean).join(', '),
+        materials: activity.materials !== 'none' ? [MATERIALS[activity.materials?.toUpperCase()]?.label || activity.materials] : [],
+        instructions: activity.instructions?.map((step, i) => ({ title: `Step ${i + 1}`, description: step })) || [],
+        tips: activity.tips || [],
+        variations: activity.variations?.map(v => ({ description: v })) || [],
+      };
+
+      const result = await shareActivityKitPDF(activityForPrint);
+      if (!result.success) {
+        Alert.alert('Unable to Share', result.error || 'Could not generate the activity kit. Please try again.');
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Something went wrong. Please try again.');
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   const getAgeLabel = (ageGroupId) => {
@@ -386,15 +418,6 @@ const ActivityDetailScreen = () => {
       <View style={[styles.bottomBar, { backgroundColor: colors.surface.primary, borderTopColor: colors.border.light, paddingBottom: Math.max(insets.bottom, 20) }]}>
         <View style={styles.bottomButtonsRow}>
           <Button
-            onPress={handleRateActivity}
-            variant="outline"
-            size="sm"
-            style={styles.smallButton}
-            icon={'\u2605'}
-          >
-            Rate
-          </Button>
-          <Button
             onPress={handleScheduleActivity}
             variant="outline"
             size="sm"
@@ -402,6 +425,15 @@ const ActivityDetailScreen = () => {
             icon={'\ud83d\udcc5'}
           >
             Schedule
+          </Button>
+          <Button
+            onPress={handleSharePDF}
+            variant="outline"
+            size="sm"
+            style={styles.smallButton}
+            disabled={isPrinting}
+          >
+            {isPrinting ? <ActivityIndicator size="small" color={colors.primary.main} /> : '\ud83d\udcf2 Share'}
           </Button>
           <Button
             onPress={handleFinishAndGoHome}
@@ -675,6 +707,7 @@ const styles = StyleSheet.create({
   },
   tagsSection: {
     marginBottom: 20,
+    alignItems: 'center',
   },
   tagsLabel: {
     fontSize: 12,
@@ -684,6 +717,7 @@ const styles = StyleSheet.create({
   tagsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    justifyContent: 'center',
     gap: 8,
   },
   tag: {

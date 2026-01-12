@@ -239,6 +239,7 @@ export const getActivityWeatherTag = (weather) => {
 
 /**
  * Check if an activity is suitable for current weather
+ * Uses relaxed matching to avoid being too restrictive
  */
 export const isActivitySuitableForWeather = (activity, currentWeatherTag) => {
   const activityWeather = activity.weather || 'any';
@@ -249,14 +250,22 @@ export const isActivitySuitableForWeather = (activity, currentWeatherTag) => {
   // Indoor activities are always suitable (including 'both' which can be done indoors)
   if (activity.location === 'indoor' || activity.location === 'both') return true;
 
-  // Check if weather matches
+  // Check if weather matches exactly
   if (activityWeather === currentWeatherTag) return true;
 
-  // Sunny activities are suitable for warm weather too
-  if (activityWeather === 'sunny' && currentWeatherTag === 'warm') return true;
-
-  // Any weather tag means the activity works in most conditions
+  // Any weather tag from the current conditions means show everything
   if (currentWeatherTag === 'any') return true;
+
+  // Relaxed weather matching for better results:
+  // - Sunny activities are suitable for warm and cool weather (not raining/snowing)
+  if (activityWeather === 'sunny' && (currentWeatherTag === 'warm' || currentWeatherTag === 'cool')) return true;
+
+  // - Cool weather activities work in warm weather too
+  if (activityWeather === 'cool' && currentWeatherTag === 'warm') return true;
+
+  // - If activity requires no specific weather and it's not actively bad weather, allow it
+  // This catches edge cases where activities might not have weather tags
+  if (!activityWeather && currentWeatherTag !== 'rainy' && currentWeatherTag !== 'snowy') return true;
 
   return false;
 };

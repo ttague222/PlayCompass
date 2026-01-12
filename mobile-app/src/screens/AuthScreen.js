@@ -14,9 +14,11 @@ import {
   SafeAreaView,
   TouchableOpacity,
   ActivityIndicator,
-  Image,
   Dimensions,
+  Linking,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 
 // Dynamically import LinearGradient to handle cases where native module isn't available
@@ -30,10 +32,22 @@ import { useTheme } from '../context/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
+const PRIVACY_POLICY_URL = 'https://watchlightinteractive.com/playcompass-privacy-policy';
+const TERMS_OF_SERVICE_URL = 'https://watchlightinteractive.com/playcompass-terms-of-service';
+
 const AuthScreen = () => {
+  const navigation = useNavigation();
   const { signInAnonymously, signInWithGoogle, loading, authError, clearError } = useAuth();
   const { colors, gradients, isDark } = useTheme();
   const [signingIn, setSigningIn] = useState(null); // 'anonymous' | 'google' | null
+
+  const openPrivacyPolicy = () => {
+    Linking.openURL(PRIVACY_POLICY_URL);
+  };
+
+  const openTermsOfService = () => {
+    Linking.openURL(TERMS_OF_SERVICE_URL);
+  };
 
   // Dynamic styles based on theme
   const dynamicStyles = {
@@ -126,6 +140,19 @@ const AuthScreen = () => {
               )}
             </TouchableOpacity>
 
+            {/* Email Sign In */}
+            <TouchableOpacity
+              style={[styles.emailButton, { borderColor: isDark ? 'rgba(255,255,255,0.3)' : '#D4CFC9' }]}
+              onPress={() => navigation.navigate('EmailSignIn')}
+              disabled={loading}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="mail-outline" size={20} color={isDark ? '#FFFFFF' : '#333'} />
+              <Text style={[styles.emailButtonText, { color: isDark ? '#FFFFFF' : '#333' }]}>
+                Continue with Email
+              </Text>
+            </TouchableOpacity>
+
             {/* Divider */}
             <View style={styles.divider}>
               <View style={[styles.dividerLine, dynamicStyles.dividerLine]} />
@@ -185,7 +212,14 @@ const AuthScreen = () => {
           {/* Footer */}
           <View style={styles.footer}>
             <Text style={[styles.footerText, dynamicStyles.footerText]}>
-              By continuing, you agree to our Terms of Service and Privacy Policy
+              By continuing, you agree to our{' '}
+              <Text style={styles.footerLink} onPress={openTermsOfService}>
+                Terms of Service
+              </Text>
+              {' '}and{' '}
+              <Text style={styles.footerLink} onPress={openPrivacyPolicy}>
+                Privacy Policy
+              </Text>
             </Text>
           </View>
         </View>
@@ -299,6 +333,22 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#333',
   },
+  emailButton: {
+    backgroundColor: 'transparent',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+  },
+  emailButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 12,
+  },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -358,6 +408,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  footerLink: {
+    textDecorationLine: 'underline',
   },
 });
 

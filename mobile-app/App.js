@@ -10,6 +10,7 @@ import { AppState, View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 import { AuthProvider } from './src/context/AuthContext';
 import { KidsProvider } from './src/context/KidsContext';
@@ -96,6 +97,11 @@ const AppContent = () => {
 
 // Initialize crash reporting on module load
 initializeCrashReporting();
+
+// Configure Google Sign-In
+GoogleSignin.configure({
+  webClientId: '463549869998-ar1h089r9hp4f0p87lrbta7fne7regl6.apps.googleusercontent.com',
+});
 
 // Initialize RevenueCat purchases
 initializePurchases().catch((error) => {

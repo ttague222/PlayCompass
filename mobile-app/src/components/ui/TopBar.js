@@ -23,9 +23,7 @@ const TopBar = () => {
       <View style={styles.content}>
         {/* Logo / Brand */}
         <View style={styles.logoSection}>
-          <View style={[styles.logoContainer, { backgroundColor: colors.primary.main }]}>
-            <Text style={styles.logoEmoji}>🧭</Text>
-          </View>
+          <Text style={styles.logoEmoji}>🧭</Text>
           <Text style={[styles.appName, { color: colors.text.primary }]}>PlayCompass</Text>
         </View>
       </View>
@@ -48,16 +46,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
-  logoContainer: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
   logoEmoji: {
-    fontSize: 20,
+    fontSize: 28,
+    marginRight: 8,
   },
   appName: {
     fontSize: 20,

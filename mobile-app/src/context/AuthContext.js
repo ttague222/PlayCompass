@@ -10,6 +10,9 @@ import firestore from '@react-native-firebase/firestore';
 import {
   signInAnonymously as authSignInAnonymously,
   signInWithGoogle as authSignInWithGoogle,
+  signInWithEmail as authSignInWithEmail,
+  signUpWithEmail as authSignUpWithEmail,
+  resetPassword as authResetPassword,
   signOut as authSignOut,
   getUserProfile,
   deleteAccount as authDeleteAccount,
@@ -134,6 +137,52 @@ export const AuthProvider = ({ children }) => {
     return result;
   }, []);
 
+  // Sign in with email
+  const signInWithEmail = useCallback(async (email, password) => {
+    setLoading(true);
+    setAuthError(null);
+    addBreadcrumb('Attempting email sign in', 'auth');
+    const result = await authSignInWithEmail(email, password);
+    if (result.success) {
+      Analytics.signIn('email');
+    } else {
+      setAuthError(result.error);
+      Analytics.error('auth', result.error, 'signInWithEmail');
+    }
+    setLoading(false);
+    return result;
+  }, []);
+
+  // Sign up with email
+  const signUpWithEmail = useCallback(async (email, password) => {
+    setLoading(true);
+    setAuthError(null);
+    addBreadcrumb('Attempting email sign up', 'auth');
+    const result = await authSignUpWithEmail(email, password);
+    if (result.success) {
+      Analytics.signUp('email');
+    } else {
+      setAuthError(result.error);
+      Analytics.error('auth', result.error, 'signUpWithEmail');
+    }
+    setLoading(false);
+    return result;
+  }, []);
+
+  // Reset password
+  const resetPassword = useCallback(async (email) => {
+    setLoading(true);
+    setAuthError(null);
+    addBreadcrumb('Attempting password reset', 'auth');
+    const result = await authResetPassword(email);
+    if (!result.success) {
+      setAuthError(result.error);
+      Analytics.error('auth', result.error, 'resetPassword');
+    }
+    setLoading(false);
+    return result;
+  }, []);
+
   // Sign out
   const signOut = useCallback(async () => {
     setLoading(true);
@@ -224,6 +273,9 @@ export const AuthProvider = ({ children }) => {
     // Auth methods
     signInAnonymously,
     signInWithGoogle,
+    signInWithEmail,
+    signUpWithEmail,
+    resetPassword,
     signOut,
     deleteAccount,
     clearError,

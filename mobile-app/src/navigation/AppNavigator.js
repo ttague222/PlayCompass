@@ -16,6 +16,7 @@ import { useTheme } from '../context/ThemeContext';
 // Screens
 import HomeScreen from '../screens/HomeScreen';
 import AuthScreen from '../screens/AuthScreen';
+import EmailSignInScreen from '../screens/EmailSignInScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import KidsListScreen from '../screens/KidsListScreen';
 import AddKidScreen from '../screens/AddKidScreen';
@@ -48,6 +49,27 @@ const LoadingScreen = () => {
       <ActivityIndicator size="large" color={colors.primary.main} />
       <Text style={{ color: colors.text.secondary, marginTop: 16 }}>Loading...</Text>
     </View>
+  );
+};
+
+// Auth stack - Authentication flow
+const AuthStack = () => {
+  const { colors } = useTheme();
+
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.background.primary },
+      }}
+    >
+      <Stack.Screen name="AuthHome" component={AuthScreen} />
+      <Stack.Screen
+        name="EmailSignIn"
+        component={EmailSignInScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+    </Stack.Navigator>
   );
 };
 
@@ -121,6 +143,11 @@ const MainStack = () => {
         component={CustomActivitiesScreen}
         options={{ animation: 'slide_from_right' }}
       />
+      <Stack.Screen
+        name="EmailSignIn"
+        component={EmailSignInScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
 
       {/* Recommendation flow */}
       <Stack.Screen
@@ -168,7 +195,7 @@ const AppNavigator = () => {
         {isAuthenticated ? (
           <Stack.Screen name="Main" component={MainStack} />
         ) : (
-          <Stack.Screen name="Auth" component={AuthScreen} />
+          <Stack.Screen name="Auth" component={AuthStack} />
         )}
       </Stack.Navigator>
     </NavigationContainer>

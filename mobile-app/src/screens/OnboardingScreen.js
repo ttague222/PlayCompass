@@ -36,31 +36,39 @@ const ONBOARDING_SLIDES = [
     emoji: '👶',
     title: 'Add Your Kids',
     description:
-      'Tell us about your children - their ages, interests, and preferences. We\'ll personalize activity recommendations just for them.',
+      'Tell us about your children - their ages, interests, and preferences. We\'ll personalize every recommendation just for them.',
     color: '#10B981',
   },
   {
     id: '3',
     emoji: '🎯',
-    title: 'Get Smart Recommendations',
+    title: 'Smart AI Recommendations',
     description:
-      'Our AI learns what your family loves. The more you use PlayCompass, the better the suggestions become.',
+      'Swipe through personalized activity ideas. Our AI learns what your family loves and gets smarter with every choice.',
     color: '#F59E0B',
   },
   {
     id: '4',
     emoji: '📅',
-    title: 'Schedule & Track',
+    title: 'Plan Your Week',
     description:
-      'Plan activities in advance, set reminders, and track your family\'s progress. Celebrate achievements together!',
+      'Schedule activities on your calendar, set reminder notifications, and never miss quality time with your kids.',
     color: '#8B5CF6',
   },
   {
     id: '5',
+    emoji: '❤️',
+    title: 'Save Your Favorites',
+    description:
+      'Heart activities you love, build your personal library, and print activity kits to take on the go.',
+    color: '#EF4444',
+  },
+  {
+    id: '6',
     emoji: '👨‍👩‍👧‍👦',
     title: 'Share with Family',
     description:
-      'Invite family members to join. Everyone stays on the same page with shared kids, activities, and history.',
+      'Invite caregivers and family members to join. Everyone stays in sync with shared kids, schedules, and favorites.',
     color: '#EC4899',
   },
 ];

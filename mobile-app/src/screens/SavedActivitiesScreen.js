@@ -79,25 +79,43 @@ const SavedActivitiesScreen = () => {
     Analytics.viewActivityDetail(activityId);
 
     const fullActivity = getActivityById(activityId);
-    navigation.navigate('ActivityDetail', {
-      activity: fullActivity || (isHistoryEntry ? {
-        id: activity.activity_id,
-        title: activity.activity_title,
-        emoji: activity.activity_emoji,
-        category: activity.activity_category,
-      } : activity),
-    });
-  };
 
-  const handleSchedulePress = (activity, isHistoryEntry = false) => {
-    const fullActivity = isHistoryEntry ? getActivityById(activity.activity_id) || {
+    // Build fallback activity from history entry data if local lookup fails
+    const fallbackActivity = isHistoryEntry ? {
       id: activity.activity_id,
       title: activity.activity_title,
       emoji: activity.activity_emoji,
       category: activity.activity_category,
+      description: activity.activity_description || '',
+      duration: activity.activity_duration,
+      location: activity.activity_location,
+      energy: activity.activity_energy,
+      ageGroups: activity.activity_ageGroups || [],
     } : activity;
 
-    setActivityToSchedule(fullActivity);
+    navigation.navigate('ActivityDetail', {
+      activity: fullActivity || fallbackActivity,
+    });
+  };
+
+  const handleSchedulePress = (activity, isHistoryEntry = false) => {
+    const activityId = isHistoryEntry ? activity.activity_id : activity.id;
+    const fullActivity = getActivityById(activityId);
+
+    // Build fallback activity from history entry data if local lookup fails
+    const fallbackActivity = isHistoryEntry ? {
+      id: activity.activity_id,
+      title: activity.activity_title,
+      emoji: activity.activity_emoji,
+      category: activity.activity_category,
+      description: activity.activity_description || '',
+      duration: activity.activity_duration,
+      location: activity.activity_location,
+      energy: activity.activity_energy,
+      ageGroups: activity.activity_ageGroups || [],
+    } : activity;
+
+    setActivityToSchedule(fullActivity || fallbackActivity);
     setShowScheduleModal(true);
   };
 

@@ -88,6 +88,12 @@ export const createHistoryEntry = (activity, liked, duration = null) => ({
   activity_title: activity.title,
   activity_emoji: activity.emoji,
   activity_category: activity.category,
+  // Store additional fields for better fallback display
+  activity_description: activity.description,
+  activity_duration: activity.duration,
+  activity_location: activity.location,
+  activity_energy: activity.energy,
+  activity_ageGroups: activity.ageGroups || activity.age_groups,
   timestamp: new Date().toISOString(),
   liked,
   duration,

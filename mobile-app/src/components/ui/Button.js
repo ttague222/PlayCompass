@@ -44,18 +44,21 @@ const Button = ({
       paddingHorizontal: 16,
       fontSize: 14,
       iconSize: 16,
+      iconMargin: 6,
     },
     md: {
       paddingVertical: 14,
       paddingHorizontal: 24,
       fontSize: 16,
       iconSize: 20,
+      iconMargin: 8,
     },
     lg: {
       paddingVertical: 18,
       paddingHorizontal: 32,
       fontSize: 18,
       iconSize: 24,
+      iconMargin: 10,
     },
   };
 
@@ -111,7 +114,7 @@ const Button = ({
       ) : (
         <>
           {icon && iconPosition === 'left' && (
-            <Text style={[styles.icon, { fontSize: currentSize.iconSize, color: variantStyles.textColor }]}>
+            <Text style={[styles.icon, { fontSize: currentSize.iconSize, color: variantStyles.textColor, marginRight: currentSize.iconMargin }]}>
               {icon}
             </Text>
           )}
@@ -129,7 +132,7 @@ const Button = ({
             {children}
           </Text>
           {icon && iconPosition === 'right' && (
-            <Text style={[styles.icon, styles.iconRight, { fontSize: currentSize.iconSize, color: variantStyles.textColor }]}>
+            <Text style={[styles.icon, { fontSize: currentSize.iconSize, color: variantStyles.textColor, marginRight: 0, marginLeft: currentSize.iconMargin }]}>
               {icon}
             </Text>
           )}
@@ -279,11 +282,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   icon: {
-    marginRight: 8,
-  },
-  iconRight: {
-    marginRight: 0,
-    marginLeft: 8,
+    // marginRight/marginLeft applied dynamically based on size
   },
 });
 

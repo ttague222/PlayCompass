@@ -66,7 +66,8 @@ export const filterByAgeGroup = (ageGroupId) => {
 
 /**
  * Filter activities by multiple age groups (for multiple kids)
- * Activities that work for ALL specified age groups
+ * Activities that work for ANY of the specified age groups
+ * This allows multi-kid families with different ages to get more results
  * @param {string[]} ageGroupIds - Array of age group IDs
  * @returns {Activity[]} Filtered activities
  */
@@ -74,7 +75,7 @@ export const filterByAgeGroups = (ageGroupIds) => {
   if (!ageGroupIds || ageGroupIds.length === 0) return activities;
 
   return activities.filter((activity) =>
-    ageGroupIds.every((ageGroup) => activity.ageGroups.includes(ageGroup))
+    ageGroupIds.some((ageGroup) => activity.ageGroups.includes(ageGroup))
   );
 };
 
@@ -248,15 +249,16 @@ export const getCategoriesWithCounts = () => {
  * @param {string[]} [filters.interests] - Interest IDs
  * @param {string} [filters.search] - Search query
  * @param {boolean} [filters.requiresNoSupplies] - Only activities with no materials
+ * @param {string} [filters.materials] - Materials filter (none, basic, or null for any)
  * @returns {Activity[]} Filtered activities
  */
 export const filterActivities = (filters = {}) => {
   let result = [...activities];
 
-  // Filter by age groups (must match ALL)
+  // Filter by age groups (match ANY - better for multi-kid families)
   if (filters.ageGroups?.length > 0) {
     result = result.filter((activity) =>
-      filters.ageGroups.every((ageGroup) => activity.ageGroups.includes(ageGroup))
+      filters.ageGroups.some((ageGroup) => activity.ageGroups.includes(ageGroup))
     );
   }
 
@@ -291,9 +293,16 @@ export const filterActivities = (filters = {}) => {
     );
   }
 
-  // Filter by energy
+  // Filter by energy (relaxed - include adjacent energy levels)
+  // High energy can include medium, low energy can include medium
+  // This prevents being too restrictive while still respecting the preference
   if (filters.energy) {
-    result = result.filter((activity) => activity.energy === filters.energy);
+    result = result.filter((activity) => {
+      if (activity.energy === filters.energy) return true;
+      // Medium energy activities are always included as a bridge
+      if (activity.energy === 'medium') return true;
+      return false;
+    });
   }
 
   // Filter by interests (match ANY)
@@ -314,27 +323,67 @@ export const filterActivities = (filters = {}) => {
     );
   }
 
-  // Filter by no supplies needed
+  // Filter by no supplies needed (legacy)
   if (filters.requiresNoSupplies) {
     result = result.filter((activity) => activity.materials === 'none');
   }
+
+  // Filter by materials level
+  // 'none' = only activities requiring no supplies
+  // 'basic' = activities requiring none or basic supplies
+  // null/undefined = show all (no filter)
+  if (filters.materials === 'none') {
+    result = result.filter((activity) => activity.materials === 'none');
+  } else if (filters.materials === 'basic') {
+    result = result.filter((activity) =>
+      activity.materials === 'none' || activity.materials === 'basic'
+    );
+  }
+  // If materials is null/undefined, don't filter (show all)
 
   return result;
 };
 
 /**
+ * Seeded random number generator for reproducible shuffling within a session
+ * Uses a simple linear congruential generator
+ */
+const createSeededRandom = (seed) => {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+};
+
+/**
+ * Shuffle array using Fisher-Yates with seeded random
+ */
+const seededShuffle = (array, random) => {
+  const result = [...array];
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(random() * (i + 1));
+    [result[i], result[j]] = [result[j], result[i]];
+  }
+  return result;
+};
+
+/**
  * Get recommended activities for kids
- * Combines age filtering, interest matching, and popularity
+ * Combines age filtering, interest matching, popularity, and preference boosts
+ * Includes session-based randomization for variety between sessions
  * @param {Array<{age: number, interests: string[]}>} kids - Array of kids
  * @param {Object} [options] - Additional options
  * @param {number} [options.count=5] - Number of recommendations
  * @param {string} [options.location] - Location preference
  * @param {number} [options.availableTime] - Time available in minutes
  * @param {string} [options.energy] - Energy level preference
+ * @param {string} [options.materials] - Materials filter (none, basic, or null for any)
+ * @param {Object} [options.categoryBoosts] - Category preference boosts from learning
  * @returns {Activity[]} Recommended activities
  */
 export const getRecommendedActivities = (kids, options = {}) => {
-  const { count = 5, location, availableTime, energy } = options;
+  const { count = 5, location, availableTime, energy, materials, categoryBoosts = {} } = options;
 
   // Get combined age groups and interests from all kids
   const ageGroups = getAgeGroupsFromKids(kids);
@@ -346,31 +395,50 @@ export const getRecommendedActivities = (kids, options = {}) => {
     location,
     availableTime,
     energy,
+    materials,
   };
 
   // Get filtered activities
   let result = filterActivities(filters);
 
-  // Score activities by interest match with randomization for variety
-  const scoredActivities = result.map((activity) => {
-    const interestMatches = activity.interests.filter((i) =>
-      interests.includes(i)
-    ).length;
+  // Create a session seed based on current time (changes every 10 minutes for variety)
+  // This ensures users get different results in different sessions but consistent within a session
+  const sessionSeed = Math.floor(Date.now() / (10 * 60 * 1000));
+  const random = createSeededRandom(sessionSeed);
 
-    // Add random factor (0-5) to introduce variety among similar activities
-    const randomFactor = Math.random() * 5;
+  // Score activities by interest match, category boosts, and popularity
+  const scoredActivities = result.map((activity) => {
+    const interestMatches = activity.interests?.filter((i) =>
+      interests.includes(i)
+    ).length || 0;
+
+    // Apply category boost from preference learning (-1 to +1, scaled to -15 to +15 points)
+    const category = activity.category?.toLowerCase();
+    const categoryBoost = (categoryBoosts[category] || 0) * 15;
 
     return {
       ...activity,
-      relevanceScore: activity.popularityScore + interestMatches * 10 + randomFactor,
+      relevanceScore: activity.popularityScore + interestMatches * 10 + categoryBoost,
     };
   });
 
-  // Sort by relevance score (now includes randomization)
-  scoredActivities.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  // Group activities into relevance tiers (high/medium/low)
+  // This ensures variety while still prioritizing more relevant activities
+  const maxScore = Math.max(...scoredActivities.map(a => a.relevanceScore), 1);
+  const highTier = scoredActivities.filter(a => a.relevanceScore >= maxScore * 0.7);
+  const mediumTier = scoredActivities.filter(a => a.relevanceScore >= maxScore * 0.4 && a.relevanceScore < maxScore * 0.7);
+  const lowTier = scoredActivities.filter(a => a.relevanceScore < maxScore * 0.4);
+
+  // Shuffle within each tier for variety between sessions
+  const shuffledHigh = seededShuffle(highTier, random);
+  const shuffledMedium = seededShuffle(mediumTier, random);
+  const shuffledLow = seededShuffle(lowTier, random);
+
+  // Combine tiers (high-relevance activities first, then medium, then low)
+  const combined = [...shuffledHigh, ...shuffledMedium, ...shuffledLow];
 
   // Return top N
-  return scoredActivities.slice(0, count);
+  return combined.slice(0, count);
 };
 
 /**

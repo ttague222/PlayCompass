@@ -171,16 +171,28 @@ export const getCategoryBoosts = async () => {
 };
 
 /**
- * Get activities that should be excluded (passed multiple times)
- * @param {number} minPasses - Minimum pass count to exclude (default 2)
+ * Get activities that should be excluded (passed multiple times recently)
+ * @param {number} minPasses - Minimum pass count to exclude (default 3)
+ * @param {number} withinDays - Only consider passes within this many days (default 30)
  */
-export const getExcludedActivityIds = async (minPasses = 2) => {
+export const getExcludedActivityIds = async (minPasses = 3, withinDays = 30) => {
   const preferences = await loadPreferences();
   const excluded = [];
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - withinDays);
 
   for (const [activityId, feedback] of Object.entries(preferences.activityFeedback)) {
-    // Exclude if passed multiple times
-    if (!feedback.liked && feedback.count >= minPasses) {
+    // Only exclude if:
+    // 1. Most recent interaction was a pass (not liked)
+    // 2. Seen at least minPasses times total (gives activity multiple chances)
+    // 3. Last seen within the time window (so old passes eventually expire)
+    //
+    // Note: We use count >= minPasses to ensure users see activities multiple times
+    // before we start excluding them. This prevents premature exclusion.
+    const lastSeenDate = feedback.lastSeen ? new Date(feedback.lastSeen) : null;
+    const isRecent = lastSeenDate && lastSeenDate > cutoffDate;
+
+    if (!feedback.liked && feedback.count >= minPasses && isRecent) {
       excluded.push(activityId);
     }
   }

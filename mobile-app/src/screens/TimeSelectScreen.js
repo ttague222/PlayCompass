@@ -200,7 +200,8 @@ const TimeSelectScreen = () => {
       duration: selectedDuration,
       location: selectedLocation,
       energy: selectedEnergy,
-      materials: selectedMaterials,
+      // 'any' means no filter - pass null to not filter on materials
+      materials: selectedMaterials === 'any' ? null : selectedMaterials,
       selectedKids: selectedKids,
       // Only pass weather/seasonal filters if user has access
       weather: hasWeatherFeature && useWeatherFilter ? weather : null,
