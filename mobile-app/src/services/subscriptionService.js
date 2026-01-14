@@ -88,13 +88,12 @@ export const SUBSCRIPTION_TIERS = {
     price: 0,
     priceLabel: 'Free',
     features: {
-      dailyRecommendations: 5,
+      dailyRecommendations: 2,
       maxKids: 2,
       historyDays: 7,
       categories: ['creative', 'games', 'physical', 'educational'], // Limited categories
       customActivities: false,
       scheduling: false,
-      prioritySupport: false,
       offlineMode: false,
       // Premium content features
       seasonalActivities: false,
@@ -107,16 +106,15 @@ export const SUBSCRIPTION_TIERS = {
   plus: {
     id: 'plus',
     name: 'PlayCompass+',
-    price: 4.99,
-    priceLabel: '$4.99/month',
+    price: 3.99,
+    priceLabel: '$3.99/month',
     features: {
-      dailyRecommendations: 25,
+      dailyRecommendations: 5,
       maxKids: 5,
       historyDays: 30,
       categories: 'all', // All categories
       customActivities: true,
       scheduling: true,
-      prioritySupport: false,
       offlineMode: true,
       // Premium content features
       seasonalActivities: true,
@@ -129,8 +127,8 @@ export const SUBSCRIPTION_TIERS = {
   family: {
     id: 'family',
     name: 'Family Pro',
-    price: 9.99,
-    priceLabel: '$9.99/month',
+    price: 7.99,
+    priceLabel: '$7.99/month',
     features: {
       dailyRecommendations: 'unlimited',
       maxKids: 10,
@@ -138,7 +136,6 @@ export const SUBSCRIPTION_TIERS = {
       categories: 'all',
       customActivities: true,
       scheduling: true,
-      prioritySupport: true,
       offlineMode: true,
       // Premium content features
       seasonalActivities: true,
@@ -183,11 +180,6 @@ export const FEATURE_DESCRIPTIONS = {
     name: 'Activity Scheduling',
     icon: '📅',
     description: 'Plan your week with scheduled activities and reminders',
-  },
-  prioritySupport: {
-    name: 'Priority Support',
-    icon: '💬',
-    description: 'Get help faster with priority support',
   },
   offlineMode: {
     name: 'Offline Mode',
@@ -444,14 +436,24 @@ export const getSubscriptionStatus = async (userId) => {
         };
       }
 
-      // New user - no trial started yet, start one now
+      // Existing user without trial started - start one now
+      // This handles legacy users created before trial was added on signup
       if (!trialStartDate) {
-        console.log('[Subscription] Starting trial for new user:', userId);
-        await docRef.update({
-          trialStartDate: firestore.FieldValue.serverTimestamp(),
-        });
+        console.log('[Subscription] Starting trial for existing user without trial:', userId);
+        const now = new Date();
+        try {
+          await docRef.update({
+            trialStartDate: firestore.FieldValue.serverTimestamp(),
+          });
+        } catch (updateError) {
+          // If update fails (doc doesn't exist), use set with merge
+          console.log('[Subscription] Update failed, using set with merge:', updateError.code);
+          await docRef.set({
+            trialStartDate: firestore.FieldValue.serverTimestamp(),
+          }, { merge: true });
+        }
         // Return trial status as if it just started
-        const newTrialStatus = getTrialStatus(new Date());
+        const newTrialStatus = getTrialStatus(now);
         return {
           tier: 'free',
           ...newTrialStatus,

@@ -590,9 +590,13 @@ const SavedActivitiesScreen = () => {
       {/* Schedule Modal */}
       <ScheduleActivityModal
         visible={showScheduleModal}
-        onClose={() => {
+        onClose={(wasScheduled) => {
           setShowScheduleModal(false);
           setActivityToSchedule(null);
+          // Refresh schedules if activity was successfully scheduled
+          if (wasScheduled) {
+            refreshSchedules();
+          }
         }}
         activity={activityToSchedule}
       />

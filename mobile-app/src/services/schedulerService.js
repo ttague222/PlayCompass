@@ -126,18 +126,38 @@ export const cancelActivityReminder = async (notificationId) => {
 };
 
 /**
- * Get all scheduled activities
+ * Get all scheduled activities (raw, no filtering)
+ * Used internally for save operations
  */
-export const getScheduledActivities = async () => {
+const getAllScheduledActivitiesRaw = async () => {
   try {
     const stored = await AsyncStorage.getItem(SCHEDULES_KEY);
     if (stored) {
-      const schedules = JSON.parse(stored);
-      // Filter out past schedules
+      return JSON.parse(stored);
+    }
+    return [];
+  } catch (error) {
+    console.error('Error getting schedules:', error);
+    return [];
+  }
+};
+
+/**
+ * Get all scheduled activities
+ * Filters out past schedules (but keeps today's schedules)
+ */
+export const getScheduledActivities = async () => {
+  try {
+    const schedules = await getAllScheduledActivitiesRaw();
+    if (schedules.length > 0) {
+      // Filter out past schedules, but keep today's schedules even if time has passed
       const now = new Date();
-      const activeSchedules = schedules.filter(
-        (s) => new Date(s.scheduledDate) > now || s.recurring
-      );
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const activeSchedules = schedules.filter((s) => {
+        const scheduleDate = new Date(s.scheduledDate);
+        // Keep if: scheduled for today or later, or recurring, or not completed
+        return scheduleDate >= todayStart || s.recurring || !s.completed;
+      });
       return activeSchedules;
     }
     return [];
@@ -152,7 +172,8 @@ export const getScheduledActivities = async () => {
  */
 export const saveScheduledActivity = async (schedule) => {
   try {
-    const schedules = await getScheduledActivities();
+    // Use raw function to avoid filtering out schedules when saving
+    const schedules = await getAllScheduledActivitiesRaw();
 
     const newSchedule = {
       id: `schedule_${Date.now()}`,
@@ -170,9 +191,10 @@ export const saveScheduledActivity = async (schedule) => {
     schedules.push(newSchedule);
     await AsyncStorage.setItem(SCHEDULES_KEY, JSON.stringify(schedules));
 
+    console.log('[SchedulerService] Activity scheduled successfully:', newSchedule.id);
     return { success: true, schedule: newSchedule };
   } catch (error) {
-    console.error('Error saving schedule:', error);
+    console.error('[SchedulerService] Error saving schedule:', error);
     return { success: false, error: error.message };
   }
 };
@@ -182,7 +204,8 @@ export const saveScheduledActivity = async (schedule) => {
  */
 export const updateScheduledActivity = async (scheduleId, updates) => {
   try {
-    const schedules = await getScheduledActivities();
+    // Use raw function to avoid losing schedules during update
+    const schedules = await getAllScheduledActivitiesRaw();
     const index = schedules.findIndex((s) => s.id === scheduleId);
 
     if (index === -1) {
@@ -222,7 +245,8 @@ export const updateScheduledActivity = async (scheduleId, updates) => {
  */
 export const deleteScheduledActivity = async (scheduleId) => {
   try {
-    const schedules = await getScheduledActivities();
+    // Use raw function to avoid losing schedules during delete
+    const schedules = await getAllScheduledActivitiesRaw();
     const schedule = schedules.find((s) => s.id === scheduleId);
 
     if (schedule?.notificationId) {

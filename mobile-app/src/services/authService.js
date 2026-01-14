@@ -122,6 +122,8 @@ export const createOrUpdateUserProfile = async (user) => {
       await userRef.set({
         ...userData,
         createdAt: firestore.FieldValue.serverTimestamp(),
+        // Start trial immediately for new users
+        trialStartDate: firestore.FieldValue.serverTimestamp(),
         // Default preferences
         preferences: {
           notifications: true,
@@ -146,6 +148,8 @@ export const createOrUpdateUserProfile = async (user) => {
       await userRef.set({
         ...userData,
         createdAt: firestore.FieldValue.serverTimestamp(),
+        // Start trial immediately for new users
+        trialStartDate: firestore.FieldValue.serverTimestamp(),
         preferences: {
           notifications: true,
           darkMode: 'system',

@@ -65,10 +65,10 @@ const ONBOARDING_SLIDES = [
   },
   {
     id: '6',
-    emoji: '👨‍👩‍👧‍👦',
-    title: 'Share with Family',
+    emoji: '📄',
+    title: 'Take Activities To-Go',
     description:
-      'Invite caregivers and family members to join. Everyone stays in sync with shared kids, schedules, and favorites.',
+      'Download activity kits as PDFs to print or share with caregivers. Perfect for playdates, babysitters, or family outings.',
     color: '#EC4899',
   },
 ];

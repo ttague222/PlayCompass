@@ -30,7 +30,7 @@ const ActivityDetailScreen = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, getActivityRating, saveRating } = useFavorites();
-  const { effectiveTier } = useSubscription();
+  const { effectiveTier, isInTrial } = useSubscription();
 
   const { activity } = route.params || {};
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -277,6 +277,11 @@ const ActivityDetailScreen = () => {
                     <Text style={styles.premiumBadgeText}>Premium</Text>
                   </Badge>
                 )}
+                {hasDetailedInstructions && isInTrial && (
+                  <Badge variant="secondary" size="sm" style={{ backgroundColor: colors.primary.main + '15' }}>
+                    <Text style={{ color: colors.primary.main, fontSize: 10, fontWeight: '600' }}>✨ Bonus Feature</Text>
+                  </Badge>
+                )}
               </View>
               {hasDetailedInstructions ? (
                 activity.instructions.map((step, index) => (
@@ -320,6 +325,11 @@ const ActivityDetailScreen = () => {
                     <Text style={styles.premiumBadgeText}>Premium</Text>
                   </Badge>
                 )}
+                {hasDetailedInstructions && isInTrial && (
+                  <Badge variant="secondary" size="sm" style={{ backgroundColor: colors.primary.main + '15' }}>
+                    <Text style={{ color: colors.primary.main, fontSize: 10, fontWeight: '600' }}>✨ Bonus Feature</Text>
+                  </Badge>
+                )}
               </View>
               {hasDetailedInstructions ? (
                 activity.tips.map((tip, index) => (
@@ -356,6 +366,11 @@ const ActivityDetailScreen = () => {
                 {!hasDetailedInstructions && (
                   <Badge variant="premium" size="sm">
                     <Text style={styles.premiumBadgeText}>Premium</Text>
+                  </Badge>
+                )}
+                {hasDetailedInstructions && isInTrial && (
+                  <Badge variant="secondary" size="sm" style={{ backgroundColor: colors.primary.main + '15' }}>
+                    <Text style={{ color: colors.primary.main, fontSize: 10, fontWeight: '600' }}>✨ Bonus Feature</Text>
                   </Badge>
                 )}
               </View>

@@ -13,13 +13,17 @@ import {
   TouchableOpacity,
   Alert,
   Modal,
+  FlatList,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useScheduler } from '../context/SchedulerContext';
 import { useSubscription } from '../context/SubscriptionContext';
+import { useHistory } from '../context/HistoryContext';
+import { useFavorites } from '../context/FavoritesContext';
 import { Card, Button, IconButton, Badge, ScreenWrapper } from '../components';
+import { getActivityById } from '../services/activitiesService';
 
 const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const FULL_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -38,7 +42,10 @@ const ScheduleScreen = () => {
     scheduleActivity,
     notificationsEnabled,
     requestNotifications,
+    refreshSchedules,
   } = useScheduler();
+  const { history } = useHistory();
+  const { favorites } = useFavorites();
 
   const [selectedDate, setSelectedDate] = useState(new Date());
 
@@ -48,6 +55,15 @@ const ScheduleScreen = () => {
   const [scheduleDate, setScheduleDate] = useState(new Date());
   const [selectedTimeSlot, setSelectedTimeSlot] = useState('morning');
   const [isScheduling, setIsScheduling] = useState(false);
+
+  // Saved activities picker modal state
+  const [showSavedPicker, setShowSavedPicker] = useState(false);
+  const [savedPickerTab, setSavedPickerTab] = useState('liked');
+
+  // Get liked activities from history
+  const likedActivities = useMemo(() => {
+    return history.filter((h) => h.liked);
+  }, [history]);
 
   // Time slots for scheduling (expanded options)
   const TIME_SLOTS = [
@@ -220,6 +236,46 @@ const ScheduleScreen = () => {
     setActivityToSchedule(null);
   };
 
+  // Saved activities picker handlers
+  const handleOpenSavedPicker = () => {
+    setShowSavedPicker(true);
+  };
+
+  const handleCloseSavedPicker = () => {
+    setShowSavedPicker(false);
+  };
+
+  const handleSelectSavedActivity = (item, isHistoryEntry = false) => {
+    const activityId = isHistoryEntry ? item.activity_id : item.id;
+    const fullActivity = getActivityById(activityId);
+
+    // Build fallback activity from history entry data if local lookup fails
+    const fallbackActivity = isHistoryEntry ? {
+      id: item.activity_id,
+      title: item.activity_title,
+      emoji: item.activity_emoji,
+      category: item.activity_category,
+      description: item.activity_description || '',
+      duration: item.activity_duration,
+      location: item.activity_location,
+      energy: item.activity_energy,
+      ageGroups: item.activity_ageGroups || [],
+    } : item;
+
+    const activity = fullActivity || fallbackActivity;
+
+    // Close picker and open schedule modal
+    setShowSavedPicker(false);
+    setActivityToSchedule(activity);
+
+    // Set initial schedule date to selected date with morning time
+    const initialDate = new Date(selectedDate);
+    initialDate.setHours(9, 0, 0, 0);
+    setScheduleDate(initialDate);
+    setSelectedTimeSlot('morning');
+    setShowScheduleModal(true);
+  };
+
   const formatTime = (dateString) => {
     const date = new Date(dateString);
     return date.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -247,7 +303,7 @@ const ScheduleScreen = () => {
           style={[styles.weekNavButton, { backgroundColor: colors.surface.secondary }]}
           activeOpacity={0.7}
         >
-          <Text style={[styles.weekNavText, { color: colors.primary.main }]}>←</Text>
+          <Text style={[styles.weekNavChevron, { color: colors.primary.main }]}>‹</Text>
         </TouchableOpacity>
         <Text style={[styles.weekTitle, { color: colors.text.primary }]}>
           {weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} -{' '}
@@ -258,7 +314,7 @@ const ScheduleScreen = () => {
           style={[styles.weekNavButton, { backgroundColor: colors.surface.secondary }]}
           activeOpacity={0.7}
         >
-          <Text style={[styles.weekNavText, { color: colors.primary.main }]}>→</Text>
+          <Text style={[styles.weekNavChevron, { color: colors.primary.main }]}>›</Text>
         </TouchableOpacity>
       </View>
 
@@ -380,27 +436,41 @@ const ScheduleScreen = () => {
             No activities scheduled
           </Text>
           <Text style={[styles.emptyText, { color: colors.text.secondary }]}>
-            Find an activity and schedule it for this day
+            Add an activity to your schedule
           </Text>
-          <Button
-            onPress={() => navigation.navigate('TimeSelect')}
-            variant="primary"
-            style={styles.findActivityButton}
-          >
-            Find Activity
-          </Button>
+          <View style={styles.emptyButtonRow}>
+            <Button
+              onPress={() => navigation.navigate('TimeSelect')}
+              variant="primary"
+              style={styles.emptyActionButton}
+            >
+              Find New
+            </Button>
+            <Button
+              onPress={handleOpenSavedPicker}
+              variant="outline"
+              style={styles.emptyActionButton}
+            >
+              Saved
+            </Button>
+          </View>
         </Card>
       )}
     </View>
   );
 
-  const renderUpcomingActivities = () => (
-    <View style={styles.upcomingSection}>
-      <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
-        Upcoming This Week
-      </Text>
-      {upcomingActivities.length > 0 ? (
-        upcomingActivities.slice(0, 5).map((schedule) => (
+  const renderUpcomingActivities = () => {
+    // Hide section entirely when empty for cleaner UI
+    if (upcomingActivities.length === 0) {
+      return null;
+    }
+
+    return (
+      <View style={styles.upcomingSection}>
+        <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
+          Upcoming This Week
+        </Text>
+        {upcomingActivities.slice(0, 5).map((schedule) => (
           <TouchableOpacity
             key={schedule.id}
             style={[styles.upcomingItem, { backgroundColor: colors.surface.secondary }]}
@@ -423,14 +493,10 @@ const ScheduleScreen = () => {
             </View>
             <Text style={[styles.upcomingArrow, { color: colors.text.tertiary }]}>›</Text>
           </TouchableOpacity>
-        ))
-      ) : (
-        <Text style={[styles.noUpcoming, { color: colors.text.tertiary }]}>
-          No upcoming activities scheduled
-        </Text>
-      )}
-    </View>
-  );
+        ))}
+      </View>
+    );
+  };
 
   if (!hasSchedulingAccess) {
     return (
@@ -465,7 +531,13 @@ const ScheduleScreen = () => {
       <View style={styles.header}>
         <IconButton icon="←" onPress={handleBack} variant="ghost" size="md" />
         <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Schedule</Text>
-        <View style={{ width: 44 }} />
+        <IconButton
+          icon="+"
+          onPress={handleOpenSavedPicker}
+          variant="ghost"
+          size="md"
+          style={styles.addButton}
+        />
       </View>
 
       {/* Notification Banner */}
@@ -614,6 +686,151 @@ const ScheduleScreen = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Saved Activities Picker Modal */}
+      <Modal
+        visible={showSavedPicker}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={handleCloseSavedPicker}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.savedPickerContent, { backgroundColor: colors.surface.primary }]}>
+            {/* Header */}
+            <View style={styles.savedPickerHeader}>
+              <Text style={[styles.modalTitle, { color: colors.text.primary }]}>
+                Add from Saved
+              </Text>
+              <TouchableOpacity onPress={handleCloseSavedPicker} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                <Text style={[styles.modalClose, { color: colors.text.tertiary }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Tabs */}
+            <View style={[styles.pickerTabs, { borderBottomColor: colors.border.light }]}>
+              <TouchableOpacity
+                style={[
+                  styles.pickerTab,
+                  savedPickerTab === 'liked' && { borderBottomColor: colors.primary.main, borderBottomWidth: 2 },
+                ]}
+                onPress={() => setSavedPickerTab('liked')}
+              >
+                <Text style={[
+                  styles.pickerTabText,
+                  { color: savedPickerTab === 'liked' ? colors.primary.main : colors.text.secondary },
+                ]}>
+                  ❤️ Liked ({likedActivities.length})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.pickerTab,
+                  savedPickerTab === 'favorites' && { borderBottomColor: colors.primary.main, borderBottomWidth: 2 },
+                ]}
+                onPress={() => setSavedPickerTab('favorites')}
+              >
+                <Text style={[
+                  styles.pickerTabText,
+                  { color: savedPickerTab === 'favorites' ? colors.primary.main : colors.text.secondary },
+                ]}>
+                  ⭐ Favorites ({favorites.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Activity List */}
+            <View style={styles.savedActivityListWrapper}>
+              {savedPickerTab === 'liked' ? (
+                likedActivities.length > 0 ? (
+                  <FlatList
+                    data={likedActivities}
+                    keyExtractor={(item, index) => `liked-${item.activity_id}-${index}`}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[styles.savedActivityItem, { backgroundColor: colors.surface.secondary }]}
+                        onPress={() => handleSelectSavedActivity(item, true)}
+                      >
+                        <Text style={styles.savedActivityEmoji}>{item.activity_emoji}</Text>
+                        <View style={styles.savedActivityInfo}>
+                          <Text style={[styles.savedActivityTitle, { color: colors.text.primary }]} numberOfLines={1}>
+                            {item.activity_title}
+                          </Text>
+                          <Text style={[styles.savedActivityMeta, { color: colors.text.tertiary }]}>
+                            {item.activity_duration}
+                          </Text>
+                        </View>
+                        <Text style={[styles.savedActivityArrow, { color: colors.primary.main }]}>+</Text>
+                      </TouchableOpacity>
+                    )}
+                    style={styles.savedActivityList}
+                    contentContainerStyle={styles.savedActivityListContent}
+                  />
+                ) : (
+                  <View style={styles.emptyPickerState}>
+                    <Text style={styles.emptyPickerEmoji}>❤️</Text>
+                    <Text style={[styles.emptyPickerText, { color: colors.text.secondary }]}>
+                      No liked activities yet
+                    </Text>
+                    <Button
+                      variant="primary"
+                      onPress={() => {
+                        handleCloseSavedPicker();
+                        navigation.navigate('TimeSelect');
+                      }}
+                      style={styles.emptyPickerButton}
+                    >
+                      Find Activities
+                    </Button>
+                  </View>
+                )
+              ) : (
+                favorites.length > 0 ? (
+                  <FlatList
+                    data={favorites}
+                    keyExtractor={(item, index) => `fav-${item.id}-${index}`}
+                    renderItem={({ item }) => (
+                      <TouchableOpacity
+                        style={[styles.savedActivityItem, { backgroundColor: colors.surface.secondary }]}
+                        onPress={() => handleSelectSavedActivity(item, false)}
+                      >
+                        <Text style={styles.savedActivityEmoji}>{item.emoji}</Text>
+                        <View style={styles.savedActivityInfo}>
+                          <Text style={[styles.savedActivityTitle, { color: colors.text.primary }]} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          <Text style={[styles.savedActivityMeta, { color: colors.text.tertiary }]}>
+                            {item.duration}
+                          </Text>
+                        </View>
+                        <Text style={[styles.savedActivityArrow, { color: colors.primary.main }]}>+</Text>
+                      </TouchableOpacity>
+                    )}
+                    style={styles.savedActivityList}
+                    contentContainerStyle={styles.savedActivityListContent}
+                  />
+                ) : (
+                  <View style={styles.emptyPickerState}>
+                    <Text style={styles.emptyPickerEmoji}>⭐</Text>
+                    <Text style={[styles.emptyPickerText, { color: colors.text.secondary }]}>
+                      No favorite activities yet
+                    </Text>
+                    <Button
+                      variant="primary"
+                      onPress={() => {
+                        handleCloseSavedPicker();
+                        navigation.navigate('TimeSelect');
+                      }}
+                      style={styles.emptyPickerButton}
+                    >
+                      Find Activities
+                    </Button>
+                  </View>
+                )
+              )}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScreenWrapper>
   );
 };
@@ -675,15 +892,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   weekNavButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  weekNavText: {
-    fontSize: 20,
-    fontWeight: '500',
+  weekNavChevron: {
+    fontSize: 28,
+    fontWeight: '300',
+    marginTop: -2,
   },
   weekTitle: {
     fontSize: 16,
@@ -961,6 +1179,107 @@ const styles = StyleSheet.create({
   },
   modalButton: {
     flex: 1,
+  },
+  // Add button in header
+  addButton: {
+    width: 44,
+  },
+  // Empty state buttons
+  emptyButtonRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+    width: '100%',
+  },
+  emptyActionButton: {
+    flex: 1,
+  },
+  // Saved activities picker modal
+  savedPickerContent: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingBottom: 40,
+    maxHeight: '80%',
+    minHeight: 400,
+  },
+  savedPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  pickerTabs: {
+    flexDirection: 'row',
+    paddingHorizontal: 24,
+    borderBottomWidth: 1,
+  },
+  pickerTab: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  pickerTabText: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  savedActivityListWrapper: {
+    flex: 1,
+    minHeight: 250,
+  },
+  savedActivityList: {
+    flex: 1,
+  },
+  savedActivityListContent: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 20,
+  },
+  savedActivityItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  savedActivityEmoji: {
+    fontSize: 28,
+    marginRight: 14,
+  },
+  savedActivityInfo: {
+    flex: 1,
+  },
+  savedActivityTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 3,
+  },
+  savedActivityMeta: {
+    fontSize: 13,
+  },
+  savedActivityArrow: {
+    fontSize: 24,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  emptyPickerState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    paddingHorizontal: 32,
+  },
+  emptyPickerEmoji: {
+    fontSize: 56,
+    marginBottom: 20,
+  },
+  emptyPickerText: {
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+  },
+  emptyPickerButton: {
+    minWidth: 180,
   },
 });
 

@@ -494,7 +494,7 @@ const RecommendationScreen = () => {
   const { colors, isDark } = useTheme();
   const { kids: allKids } = useKids();
   const { saveActivityToHistory } = useHistory();
-  const { recordRecommendationUsage, effectiveTier } = useSubscription();
+  const { recordRecommendationUsage, effectiveTier, isInTrial } = useSubscription();
 
   const { duration, location, energy, materials, selectedKids: routeSelectedKids, surpriseActivity, weather, seasonFilter } = route.params || {};
 
@@ -873,18 +873,22 @@ const RecommendationScreen = () => {
 
         {/* Card Content */}
         <View style={styles.cardContent}>
-          {/* Premium/Seasonal Badge Row */}
-          {(currentActivity.premium || (currentActivity.season && currentActivity.season !== 'any')) && (
+          {/* Premium Feature Badges - Show when using premium features during trial */}
+          {(weather || (currentActivity.season && currentActivity.season !== 'any')) && (
             <View style={styles.premiumBadgeRow}>
-              {currentActivity.premium && (
-                <Badge variant="premium" size="sm" style={styles.premiumBadge}>
-                  <Text style={styles.premiumBadgeText}>Premium</Text>
+              {/* Weather-Aware Badge - show when weather filtering is active */}
+              {weather && (
+                <Badge variant="secondary" size="sm" style={[styles.premiumFeatureBadge, { backgroundColor: colors.primary.main + '15' }]}>
+                  <Text style={{ color: colors.primary.main, fontSize: 11, fontWeight: '600' }}>
+                    🌦️ Weather-Aware {isInTrial && '✨'}
+                  </Text>
                 </Badge>
               )}
+              {/* Seasonal Badge */}
               {currentActivity.season && currentActivity.season !== 'any' && (
                 <Badge variant="secondary" size="sm" style={[styles.seasonBadge, { backgroundColor: getSeasonColor(currentActivity.season) + '20' }]}>
-                  <Text style={{ color: getSeasonColor(currentActivity.season) }}>
-                    {getSeasonEmoji(currentActivity.season)} {currentActivity.season.charAt(0).toUpperCase() + currentActivity.season.slice(1)}
+                  <Text style={{ color: getSeasonColor(currentActivity.season), fontSize: 11, fontWeight: '600' }}>
+                    {getSeasonEmoji(currentActivity.season)} {currentActivity.season.charAt(0).toUpperCase() + currentActivity.season.slice(1)} {isInTrial && '✨'}
                   </Text>
                 </Badge>
               )}
@@ -1202,6 +1206,9 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   seasonBadge: {
+    alignSelf: 'center',
+  },
+  premiumFeatureBadge: {
     alignSelf: 'center',
   },
   activityDescription: {
