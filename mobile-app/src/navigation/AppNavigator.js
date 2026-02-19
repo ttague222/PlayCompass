@@ -25,13 +25,16 @@ import RecommendationScreen from '../screens/RecommendationScreen';
 import AcceptedActivitiesScreen from '../screens/AcceptedActivitiesScreen';
 import ActivityDetailScreen from '../screens/ActivityDetailScreen';
 import SavedActivitiesScreen from '../screens/SavedActivitiesScreen';
-import SubscriptionScreen from '../screens/SubscriptionScreen';
+import StoreScreen from '../screens/StoreScreen';
 import ScheduleScreen from '../screens/ScheduleScreen';
 import ProgressScreen from '../screens/ProgressScreen';
 import PreferencesScreen from '../screens/PreferencesScreen';
 import FamilyScreen from '../screens/FamilyScreen';
 import AccessibilityScreen from '../screens/AccessibilityScreen';
 import CustomActivitiesScreen from '../screens/CustomActivitiesScreen';
+
+// Find Activity Flow (multi-step)
+import { KidsSelectStep, TimeLocationStep, PreferencesStep } from '../screens/FindActivity';
 
 const Stack = createNativeStackNavigator();
 
@@ -110,7 +113,12 @@ const MainStack = () => {
       />
       <Stack.Screen
         name="Subscription"
-        component={SubscriptionScreen}
+        component={StoreScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="Store"
+        component={StoreScreen}
         options={{ animation: 'slide_from_right' }}
       />
       <Stack.Screen
@@ -149,12 +157,31 @@ const MainStack = () => {
         options={{ animation: 'slide_from_right' }}
       />
 
-      {/* Recommendation flow */}
+      {/* Find Activity Flow (new multi-step) */}
+      <Stack.Screen
+        name="KidsSelectStep"
+        component={KidsSelectStep}
+        options={{ animation: 'slide_from_bottom' }}
+      />
+      <Stack.Screen
+        name="TimeLocationStep"
+        component={TimeLocationStep}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="PreferencesStep"
+        component={PreferencesStep}
+        options={{ animation: 'slide_from_right' }}
+      />
+
+      {/* Legacy TimeSelect (keeping for backward compatibility) */}
       <Stack.Screen
         name="TimeSelect"
         component={TimeSelectScreen}
         options={{ animation: 'slide_from_bottom' }}
       />
+
+      {/* Recommendation results */}
       <Stack.Screen
         name="Recommendation"
         component={RecommendationScreen}

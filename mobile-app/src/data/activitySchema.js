@@ -143,6 +143,7 @@ export const CONTEXTS = {
  * @property {string[]} [variations] - Activity variations
  * @property {boolean} [adultSupervision] - Requires adult supervision
  * @property {number} [popularityScore] - For sorting (0-100)
+ * @property {boolean} [isFree] - Whether activity is free (true) or requires pack purchase (false/undefined)
  */
 
 // Helper to create activity object
@@ -170,6 +171,7 @@ export const createActivity = ({
   variations = [],
   adultSupervision = false,
   popularityScore = 50,
+  isFree = false,
 }) => ({
   id,
   title,
@@ -194,6 +196,7 @@ export const createActivity = ({
   variations,
   adultSupervision,
   popularityScore,
+  isFree,
 });
 
 export default {

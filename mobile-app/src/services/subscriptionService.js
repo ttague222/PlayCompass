@@ -1,154 +1,63 @@
 /**
  * PlayCompass Subscription Service
  *
- * Manages subscription tiers and feature gates
+ * Manages feature access based on owned packs and premium lifetime status.
+ * Replaces the old tier-based subscription model with pack-based purchases.
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
+import {
+  ACTIVITY_PACKS,
+  PREMIUM_LIFETIME,
+  isActivityUnlocked as checkActivityUnlocked,
+  hasPackAccess as checkPackAccess,
+  getPackForActivity,
+} from '../data/activityPacks';
 
 const USAGE_KEY = '@playcompass_usage';
-const TRIAL_DURATION_DAYS = 7;
 
 /**
- * Trial helper functions
+ * Tier configurations for feature limits
+ * - free: Basic access with limits
+ * - premiumLifetime: Full access with no limits
  */
-
-/**
- * Check if user is in trial period
- * @param {Date|string|null} trialStartDate - When the trial started
- * @returns {Object} Trial status info
- */
-export const getTrialStatus = (trialStartDate) => {
-  if (!trialStartDate) {
-    return { isInTrial: false, daysRemaining: 0, trialExpired: false };
-  }
-
-  const startDate = trialStartDate instanceof Date
-    ? trialStartDate
-    : trialStartDate.toDate
-      ? trialStartDate.toDate()
-      : new Date(trialStartDate);
-
-  const now = new Date();
-  const trialEndDate = new Date(startDate);
-  trialEndDate.setDate(trialEndDate.getDate() + TRIAL_DURATION_DAYS);
-
-  const msRemaining = trialEndDate.getTime() - now.getTime();
-  const daysRemaining = Math.ceil(msRemaining / (1000 * 60 * 60 * 24));
-
-  if (daysRemaining > 0) {
-    return {
-      isInTrial: true,
-      daysRemaining,
-      trialEndDate,
-      trialExpired: false,
-    };
-  }
-
-  return {
-    isInTrial: false,
-    daysRemaining: 0,
-    trialEndDate,
-    trialExpired: true,
-  };
-};
-
-/**
- * Start trial for a user (called on signup)
- */
-export const startTrial = async (userId) => {
-  try {
-    const trialStartDate = new Date();
-    await firestore().collection('users').doc(userId).update({
-      trialStartDate: firestore.FieldValue.serverTimestamp(),
-      subscription: {
-        tier: 'free',
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      },
-    });
-    return {
-      success: true,
-      trialStartDate,
-      ...getTrialStatus(trialStartDate),
-    };
-  } catch (error) {
-    console.error('Error starting trial:', error);
-    return { success: false, error: error.message };
-  }
-};
-
-/**
- * Subscription tiers configuration
- */
-export const SUBSCRIPTION_TIERS = {
+export const TIERS = {
   free: {
     id: 'free',
     name: 'Free',
-    price: 0,
-    priceLabel: 'Free',
     features: {
-      dailyRecommendations: 2,
+      dailyRecommendations: 3,
       maxKids: 2,
       historyDays: 7,
-      categories: ['creative', 'games', 'physical', 'educational'], // Limited categories
       customActivities: false,
       scheduling: false,
       offlineMode: false,
-      // Premium content features
-      seasonalActivities: false,
-      weatherAware: false,
       detailedInstructions: false,
       progressTracking: false,
     },
-    description: 'Perfect for trying out PlayCompass',
   },
-  plus: {
-    id: 'plus',
-    name: 'PlayCompass+',
-    price: 3.99,
-    priceLabel: '$3.99/month',
-    features: {
-      dailyRecommendations: 5,
-      maxKids: 5,
-      historyDays: 30,
-      categories: 'all', // All categories
-      customActivities: true,
-      scheduling: true,
-      offlineMode: true,
-      // Premium content features
-      seasonalActivities: true,
-      weatherAware: true,
-      detailedInstructions: true,
-      progressTracking: true,
-    },
-    description: 'For active families who want more variety',
-  },
-  family: {
-    id: 'family',
-    name: 'Family Pro',
-    price: 7.99,
-    priceLabel: '$7.99/month',
+  premiumLifetime: {
+    id: 'premiumLifetime',
+    name: 'Premium Lifetime',
     features: {
       dailyRecommendations: 'unlimited',
       maxKids: 10,
       historyDays: 365,
-      categories: 'all',
       customActivities: true,
       scheduling: true,
       offlineMode: true,
-      // Premium content features
-      seasonalActivities: true,
-      weatherAware: true,
       detailedInstructions: true,
       progressTracking: true,
     },
-    description: 'The complete PlayCompass experience',
   },
 };
 
+// Re-export for backwards compatibility
+export const SUBSCRIPTION_TIERS = TIERS;
+
 /**
- * Feature descriptions for upsell
+ * Feature descriptions for UI display
  */
 export const FEATURE_DESCRIPTIONS = {
   dailyRecommendations: {
@@ -166,11 +75,6 @@ export const FEATURE_DESCRIPTIONS = {
     icon: '📋',
     description: 'How long we keep your activity history',
   },
-  categories: {
-    name: 'Activity Categories',
-    icon: '📚',
-    description: 'Access to all activity categories',
-  },
   customActivities: {
     name: 'Custom Activities',
     icon: '✨',
@@ -186,16 +90,6 @@ export const FEATURE_DESCRIPTIONS = {
     icon: '📴',
     description: 'Use PlayCompass without internet connection',
   },
-  seasonalActivities: {
-    name: 'Seasonal Activities',
-    icon: '🍂',
-    description: 'Access to season-specific activities for spring, summer, fall, and winter',
-  },
-  weatherAware: {
-    name: 'Weather-Aware Suggestions',
-    icon: '🌦️',
-    description: 'Get activity suggestions based on current weather conditions',
-  },
   detailedInstructions: {
     name: 'Step-by-Step Instructions',
     icon: '📝',
@@ -206,6 +100,53 @@ export const FEATURE_DESCRIPTIONS = {
     icon: '📊',
     description: 'Track achievements, earn badges, and see detailed monthly reports',
   },
+};
+
+// Re-export pack helpers for convenience
+export { isActivityUnlocked, hasPackAccess, getPackForActivity } from '../data/activityPacks';
+
+/**
+ * Get the effective tier based on premium lifetime status
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {string} 'premiumLifetime' or 'free'
+ */
+export const getEffectiveTier = (hasPremiumLifetime) => {
+  return hasPremiumLifetime ? 'premiumLifetime' : 'free';
+};
+
+/**
+ * Get tier configuration based on premium status
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {Object} Tier configuration
+ */
+export const getTierConfig = (hasPremiumLifetime) => {
+  return hasPremiumLifetime ? TIERS.premiumLifetime : TIERS.free;
+};
+
+/**
+ * Check if a feature is available based on owned packs and premium status
+ * @param {string} feature - Feature name
+ * @param {string[]} ownedPacks - Array of owned pack IDs
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {boolean} Whether feature is available
+ */
+export const isFeatureAvailable = (feature, ownedPacks = [], hasPremiumLifetime = false) => {
+  // Premium lifetime gets all features
+  if (hasPremiumLifetime) {
+    return true;
+  }
+
+  // Check tier-based features
+  const tierConfig = TIERS.free;
+  const featureValue = tierConfig.features[feature];
+
+  if (typeof featureValue === 'boolean') {
+    return featureValue;
+  }
+  if (featureValue === 'unlimited') {
+    return true;
+  }
+  return featureValue > 0;
 };
 
 /**
@@ -279,12 +220,14 @@ export const incrementRecommendationUsage = async () => {
 
 /**
  * Check if user can get more recommendations today
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {Promise<Object>} Recommendation allowance info
  */
-export const canGetRecommendations = async (tier = 'free') => {
-  const tierConfig = SUBSCRIPTION_TIERS[tier] || SUBSCRIPTION_TIERS.free;
+export const canGetRecommendations = async (hasPremiumLifetime = false) => {
+  const tierConfig = getTierConfig(hasPremiumLifetime);
   const limit = tierConfig.features.dailyRecommendations;
 
-  // Unlimited for paid tiers
+  // Unlimited for premium lifetime
   if (limit === 'unlimited') {
     return { allowed: true, remaining: 'unlimited', used: 0 };
   }
@@ -303,9 +246,12 @@ export const canGetRecommendations = async (tier = 'free') => {
 
 /**
  * Check if user can add more kids
+ * @param {number} currentKidCount - Current number of kids
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {Object} Kid limit info
  */
-export const canAddKid = (currentKidCount, tier = 'free') => {
-  const tierConfig = SUBSCRIPTION_TIERS[tier] || SUBSCRIPTION_TIERS.free;
+export const canAddKid = (currentKidCount, hasPremiumLifetime = false) => {
+  const tierConfig = getTierConfig(hasPremiumLifetime);
   const limit = tierConfig.features.maxKids;
 
   return {
@@ -316,166 +262,147 @@ export const canAddKid = (currentKidCount, tier = 'free') => {
 };
 
 /**
- * Check if a category is available for the tier
+ * Check if a category/pack is available
+ * @param {string} category - Category/pack ID
+ * @param {string[]} ownedPacks - Array of owned pack IDs
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {boolean} Whether category is available
  */
-export const isCategoryAvailable = (category, tier = 'free') => {
-  const tierConfig = SUBSCRIPTION_TIERS[tier] || SUBSCRIPTION_TIERS.free;
-  const categories = tierConfig.features.categories;
-
-  if (categories === 'all') return true;
-  return categories.includes(category.toLowerCase());
-};
-
-/**
- * Get all available categories for tier
- */
-export const getAvailableCategories = (tier = 'free') => {
-  const tierConfig = SUBSCRIPTION_TIERS[tier] || SUBSCRIPTION_TIERS.free;
-  return tierConfig.features.categories;
-};
-
-/**
- * Check if a feature is available
- */
-export const isFeatureAvailable = (feature, tier = 'free') => {
-  const tierConfig = SUBSCRIPTION_TIERS[tier] || SUBSCRIPTION_TIERS.free;
-  const featureValue = tierConfig.features[feature];
-
-  if (typeof featureValue === 'boolean') {
-    return featureValue;
-  }
-  if (featureValue === 'unlimited') {
+export const isCategoryAvailable = (category, ownedPacks = [], hasPremiumLifetime = false) => {
+  // Premium lifetime gets all categories
+  if (hasPremiumLifetime) {
     return true;
   }
-  return featureValue > 0;
+
+  // Check if user owns this pack
+  return ownedPacks.includes(category);
 };
 
 /**
- * Get upgrade suggestion based on blocked feature
+ * Get all available categories for user
+ * @param {string[]} ownedPacks - Array of owned pack IDs
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {string[]|'all'} Available categories
  */
-export const getUpgradeSuggestion = (blockedFeature, currentTier = 'free') => {
-  const feature = FEATURE_DESCRIPTIONS[blockedFeature];
+export const getAvailableCategories = (ownedPacks = [], hasPremiumLifetime = false) => {
+  if (hasPremiumLifetime) {
+    return 'all';
+  }
+  return ownedPacks;
+};
 
-  // Find the cheapest tier that has this feature
-  const tiers = Object.values(SUBSCRIPTION_TIERS);
-  const currentIndex = tiers.findIndex((t) => t.id === currentTier);
-
-  for (let i = currentIndex + 1; i < tiers.length; i++) {
-    const tier = tiers[i];
-    if (isFeatureAvailable(blockedFeature, tier.id)) {
-      return {
-        suggestedTier: tier,
-        feature,
-        currentTier: SUBSCRIPTION_TIERS[currentTier],
-      };
-    }
+/**
+ * Get pack suggestion for a locked activity
+ * @param {Object} activity - The locked activity
+ * @returns {Object|null} Pack suggestion info
+ */
+export const getPackSuggestion = (activity) => {
+  const packId = getPackForActivity(activity);
+  if (!packId) {
+    return null;
   }
 
-  return null;
+  const pack = ACTIVITY_PACKS[packId];
+  if (!pack) {
+    return null;
+  }
+
+  return {
+    pack,
+    premiumLifetime: PREMIUM_LIFETIME,
+    activity,
+  };
 };
 
 /**
- * Update subscription in Firestore
+ * Update purchases in Firestore
+ * @param {string} userId - User ID
+ * @param {string[]} ownedPacks - Array of owned pack IDs
+ * @param {boolean} hasPremiumLifetime - Whether user has premium lifetime
+ * @returns {Promise<Object>} Result
  */
-export const updateSubscription = async (userId, tier, purchaseInfo = null) => {
+export const updatePurchases = async (userId, ownedPacks = [], hasPremiumLifetime = false) => {
   try {
     await firestore().collection('users').doc(userId).update({
-      subscription: {
-        tier,
+      purchases: {
+        ownedPacks,
+        hasPremiumLifetime,
         updatedAt: firestore.FieldValue.serverTimestamp(),
-        ...(purchaseInfo && {
-          purchaseId: purchaseInfo.purchaseId,
-          expiresAt: purchaseInfo.expiresAt,
-          platform: purchaseInfo.platform,
-        }),
       },
     });
     return { success: true };
   } catch (error) {
-    console.error('Error updating subscription:', error);
+    console.error('Error updating purchases:', error);
     return { success: false, error: error.message };
   }
 };
 
 /**
- * Get subscription status from Firestore (includes trial checking)
+ * Get purchase status from Firestore
+ * @param {string} userId - User ID
+ * @returns {Promise<Object>} Purchase status
  */
-export const getSubscriptionStatus = async (userId) => {
+export const getPurchaseStatus = async (userId) => {
   try {
     const docRef = firestore().collection('users').doc(userId);
     const doc = await docRef.get();
 
-    if (doc.exists) {
+    if (doc.exists()) {
       const data = doc.data();
-      const subscription = data?.subscription || { tier: 'free' };
-      const trialStartDate = data?.trialStartDate;
+      const purchases = data?.purchases || { ownedPacks: [], hasPremiumLifetime: false };
 
-      // Check if subscription has expired (for paid subscriptions)
-      if (subscription.expiresAt) {
-        const expiresAt = subscription.expiresAt.toDate
-          ? subscription.expiresAt.toDate()
-          : new Date(subscription.expiresAt);
-
-        if (new Date() > expiresAt) {
-          // Subscription expired, downgrade to free
-          return { tier: 'free', expired: true, previousTier: subscription.tier };
-        }
-      }
-
-      // If user has a paid subscription, return it (no trial needed)
-      if (subscription.tier && subscription.tier !== 'free') {
-        return subscription;
-      }
-
-      // Check trial status for free tier users
-      if (trialStartDate) {
-        const trialStatus = getTrialStatus(trialStartDate);
-        return {
-          ...subscription,
-          ...trialStatus,
-        };
-      }
-
-      // Existing user without trial started - start one now
-      // This handles legacy users created before trial was added on signup
-      if (!trialStartDate) {
-        console.log('[Subscription] Starting trial for existing user without trial:', userId);
-        const now = new Date();
-        try {
-          await docRef.update({
-            trialStartDate: firestore.FieldValue.serverTimestamp(),
-          });
-        } catch (updateError) {
-          // If update fails (doc doesn't exist), use set with merge
-          console.log('[Subscription] Update failed, using set with merge:', updateError.code);
-          await docRef.set({
-            trialStartDate: firestore.FieldValue.serverTimestamp(),
-          }, { merge: true });
-        }
-        // Return trial status as if it just started
-        const newTrialStatus = getTrialStatus(now);
-        return {
-          tier: 'free',
-          ...newTrialStatus,
-        };
-      }
-
-      return subscription;
+      return {
+        ownedPacks: purchases.ownedPacks || [],
+        hasPremiumLifetime: purchases.hasPremiumLifetime || false,
+        tier: purchases.hasPremiumLifetime ? 'premiumLifetime' : 'free',
+      };
     }
 
-    return { tier: 'free', isInTrial: false, daysRemaining: 0 };
+    return {
+      ownedPacks: [],
+      hasPremiumLifetime: false,
+      tier: 'free',
+    };
   } catch (error) {
-    console.error('Error getting subscription:', error);
-    return { tier: 'free', isInTrial: false, daysRemaining: 0 };
+    console.error('Error getting purchase status:', error);
+    return {
+      ownedPacks: [],
+      hasPremiumLifetime: false,
+      tier: 'free',
+    };
   }
 };
 
+// Legacy function for backwards compatibility
+export const getSubscriptionStatus = async (userId) => {
+  const purchaseStatus = await getPurchaseStatus(userId);
+  return {
+    tier: purchaseStatus.tier,
+    ownedPacks: purchaseStatus.ownedPacks,
+    hasPremiumLifetime: purchaseStatus.hasPremiumLifetime,
+    // Legacy fields (for backwards compat during transition)
+    isInTrial: false,
+    daysRemaining: 0,
+    trialExpired: true,
+  };
+};
+
+// Legacy function - kept for backwards compatibility
+export const updateSubscription = async (userId, tier, purchaseInfo = null) => {
+  // Map old tier to new purchase model
+  const hasPremiumLifetime = tier === 'premiumLifetime' || tier === 'plus' || tier === 'family';
+  return updatePurchases(userId, [], hasPremiumLifetime);
+};
+
 export default {
-  SUBSCRIPTION_TIERS,
+  TIERS,
+  SUBSCRIPTION_TIERS: TIERS,
   FEATURE_DESCRIPTIONS,
-  TRIAL_DURATION_DAYS,
-  getTrialStatus,
-  startTrial,
+  ACTIVITY_PACKS,
+  PREMIUM_LIFETIME,
+  getEffectiveTier,
+  getTierConfig,
+  isFeatureAvailable,
   getUsageStats,
   saveUsageStats,
   resetUsageStats,
@@ -484,8 +411,9 @@ export default {
   canAddKid,
   isCategoryAvailable,
   getAvailableCategories,
-  isFeatureAvailable,
-  getUpgradeSuggestion,
-  updateSubscription,
+  getPackSuggestion,
+  updatePurchases,
+  getPurchaseStatus,
   getSubscriptionStatus,
+  updateSubscription,
 };

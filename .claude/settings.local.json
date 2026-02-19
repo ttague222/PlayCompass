@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(tree:*)",
+      "Bash(./gradlew bundleRelease:*)",
+      "Bash(./gradlew:*)",
+      "Bash(taskkill //F //PID 268192)",
+      "Bash(firebase deploy:*)",
+      "Bash(npx react-native bundle:*)",
+      "Bash(sort:*)",
+      "Bash(for cat in active creative educational games calm outdoor social music)",
+      "Bash(do echo \"=== $cat ===\")",
+      "Bash(done)",
+      "Bash(xargs:*)",
+      "WebFetch(domain:watchlightinteractive.com)",
+      "Bash(npx expo install:*)",
+      "Bash(npx eas build:*)",
+      "Bash(gradlew.bat bundleRelease:*)",
+      "Bash(cmd.exe:*)",
+      "Bash(powershell.exe -Command \"cd C:\\\\Users\\\\ttagu\\\\Documents\\\\PlayCompass\\\\mobile-app\\\\android; .\\\\gradlew.bat bundleRelease\":*)",
+      "Bash(powershell.exe -Command \"cd ''C:\\\\Users\\\\ttagu\\\\Documents\\\\PlayCompass\\\\mobile-app\\\\android''; .\\\\gradlew.bat bundleRelease\")",
+      "Bash(powershell.exe -Command:*)",
+      "Bash(dir:*)",
+      "Bash(npx expo prebuild:*)",
+      "Bash(ls:*)",
+      "Bash(cmd /c \"cd C:\\\\Users\\\\ttagu\\\\Documents\\\\PlayCompass\\\\mobile-app\\\\android && gradlew.bat assembleRelease\")",
+      "Bash(cmd /c \"cd C:\\\\Users\\\\ttagu\\\\Documents\\\\PlayCompass\\\\mobile-app\\\\android && .\\\\gradlew.bat assembleRelease 2>&1\")",
+      "Bash(powershell -Command \"Set-Location ''C:\\\\Users\\\\ttagu\\\\Documents\\\\PlayCompass\\\\mobile-app\\\\android''; .\\\\gradlew.bat assembleRelease\")",
+      "Bash(powershell -Command \"adb logcat -d -t 500 | Select-String -Pattern ''\\(FATAL|AndroidRuntime|crash|Error|Exception|playcompass\\)'' | Select-Object -Last 100\")",
+      "Bash(powershell -Command:*)",
+      "Bash(cmd /c:*)",
+      "Bash(findstr:*)",
+      "Bash(\"C:\\\\Users\\\\ttagu\\\\AppData\\\\Local\\\\Android\\\\Sdk\\\\platform-tools\\\\adb.exe\" logcat -d)"
+    ]
+  }
+}

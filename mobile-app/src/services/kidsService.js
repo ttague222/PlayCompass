@@ -57,6 +57,14 @@ const getUserRef = () => {
  */
 export const addKid = async (kidData) => {
   try {
+    // Check if user is authenticated
+    const user = auth().currentUser;
+    if (!user) {
+      console.error('Add kid error: No user signed in');
+      return { success: false, error: 'Please sign in to add a child' };
+    }
+    console.log('[addKid] User authenticated:', user.uid, 'isAnonymous:', user.isAnonymous);
+
     // Validate and sanitize input
     const sanitizedName = sanitizeInput(kidData.name);
     if (!isValidKidName(sanitizedName)) {
@@ -87,21 +95,56 @@ export const addKid = async (kidData) => {
       updatedAt: new Date().toISOString(),
     };
 
-    // Use set with merge to handle both new and existing documents
-    // This avoids the need for a separate get() call and works atomically
+    console.log('[addKid] Getting user document...');
     const userDoc = await userRef.get();
+    console.log('[addKid] User document exists:', userDoc.exists());
+    console.log('[addKid] Kid data to add:', JSON.stringify(kid));
 
-    if (userDoc.exists && userDoc.data()?.kids) {
-      // Document exists with kids array, use update with arrayUnion
+    let newKidsArray;
+
+    if (userDoc.exists() && userDoc.data()?.kids) {
+      // Document exists with kids array - get current kids and append new one
+      console.log('[addKid] Updating existing document with new kid...');
+      const rawKids = userDoc.data().kids || [];
+
+      // Normalize existing kids data to ensure consistent format
+      // This handles any Firestore Timestamp objects that might have been stored
+      const currentKids = rawKids.map(existingKid => ({
+        ...existingKid,
+        // Ensure timestamps are ISO strings, not Firestore Timestamps
+        createdAt: existingKid.createdAt?.toDate
+          ? existingKid.createdAt.toDate().toISOString()
+          : existingKid.createdAt,
+        updatedAt: existingKid.updatedAt?.toDate
+          ? existingKid.updatedAt.toDate().toISOString()
+          : existingKid.updatedAt,
+      }));
+
+      newKidsArray = [...currentKids, kid];
+      console.log('[addKid] Current kids count:', currentKids.length);
       await userRef.update({
-        kids: firestore.FieldValue.arrayUnion(kid),
+        kids: newKidsArray,
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      });
+      console.log('[addKid] Update complete, new kids count:', newKidsArray.length);
+    } else if (userDoc.exists()) {
+      // Document exists but no kids array, use update to add kids array
+      console.log('[addKid] Document exists but no kids array, updating...');
+      newKidsArray = [kid];
+      await userRef.update({
+        kids: newKidsArray,
         updatedAt: firestore.FieldValue.serverTimestamp(),
       });
     } else {
-      // Document doesn't exist or has no kids array, use set with merge
+      // Document doesn't exist - this shouldn't happen if user signed in properly
+      // Create the document with the kid
+      console.log('[addKid] Document does not exist, creating with set...');
+      newKidsArray = [kid];
       await userRef.set(
         {
-          kids: [kid],
+          uid: user.uid,
+          kids: newKidsArray,
+          createdAt: firestore.FieldValue.serverTimestamp(),
           updatedAt: firestore.FieldValue.serverTimestamp(),
         },
         { merge: true }
@@ -109,9 +152,20 @@ export const addKid = async (kidData) => {
     }
 
     logSecurityEvent('kid_added', { kidId: kid.id });
-    return { success: true, kid };
+
+    // Return allKids for optimistic updates - allows caller to update local state immediately
+    return { success: true, kid, allKids: newKidsArray };
   } catch (error) {
-    console.error('Add kid error:', error);
+    console.error('Add kid error:', error.code, error.message);
+
+    // Provide more helpful error messages
+    if (error.code === 'firestore/permission-denied') {
+      return {
+        success: false,
+        error: 'Permission denied. Please try signing out and signing back in.'
+      };
+    }
+
     return { success: false, error: error.message };
   }
 };

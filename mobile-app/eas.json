@@ -38,12 +38,25 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "production-local": {
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "NODE_ENV": "production"
+      }
     }
   },
   "submit": {
     "production": {
       "android": {
         "track": "internal"
+      },
+      "ios": {
+        "appleId": "ttague222@gmail.com",
+        "ascAppId": "6759629498"
       }
     }
   }

@@ -20,22 +20,38 @@ import { useKids } from '../context/KidsContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Button, Paywall, ScreenWrapper, TopBar, FABMenu } from '../components';
 
+// Fun emojis that rotate based on time of day
+const getTimeBasedEmoji = () => {
+  const hour = new Date().getHours();
+  if (hour >= 6 && hour < 9) return '🌅'; // Early morning
+  if (hour >= 9 && hour < 12) return '🎨'; // Morning - creative time
+  if (hour >= 12 && hour < 14) return '🏃'; // Midday - active time
+  if (hour >= 14 && hour < 17) return '🎮'; // Afternoon - game time
+  if (hour >= 17 && hour < 19) return '🌳'; // Evening - outdoor time
+  if (hour >= 19 && hour < 21) return '📚'; // Night - calm/educational
+  return '😌'; // Late night - wind down
+};
+
 const HomeScreen = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { kids, hasKids, getAgeRangeString } = useKids();
-  const { usage, checkCanGetRecommendations, isPremium, isInTrial, daysRemaining, trialExpired, loading: subscriptionLoading } = useSubscription();
+  const { usage, checkCanGetRecommendations, hasPremiumLifetime, loading: subscriptionLoading } = useSubscription();
 
   const [showPaywall, setShowPaywall] = useState(false);
   const [recommendationsAllowed, setRecommendationsAllowed] = useState(true);
+  const [heroEmoji, setHeroEmoji] = useState(getTimeBasedEmoji());
 
-  // Check recommendation usage on mount
+  // Check recommendation usage on mount and update emoji
   useEffect(() => {
     const checkUsage = async () => {
       const result = await checkCanGetRecommendations();
       setRecommendationsAllowed(result.allowed);
     };
     checkUsage();
+
+    // Update emoji based on time of day
+    setHeroEmoji(getTimeBasedEmoji());
   }, [checkCanGetRecommendations]);
 
   const handleGetRecommendation = async () => {
@@ -51,7 +67,7 @@ const HomeScreen = () => {
       setShowPaywall(true);
       return;
     }
-    navigation.navigate('TimeSelect');
+    navigation.navigate('KidsSelectStep');
   };
 
   const handleSetupKids = () => {
@@ -63,49 +79,11 @@ const HomeScreen = () => {
       {/* Top Bar with overflow menu */}
       <TopBar />
 
-      {/* Welcome Bonus Banner - only show after subscription loaded */}
-      {!subscriptionLoading && isInTrial && (
-        <TouchableOpacity
-          style={[styles.trialBanner, { backgroundColor: colors.secondary.light }]}
-          onPress={() => navigation.navigate('Subscription')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.trialTextContainer}>
-            <Text style={[styles.trialTitle, { color: colors.text.primary }]}>
-              Welcome Bonus Active
-            </Text>
-            <Text style={[styles.trialSubtext, { color: colors.text.secondary }]}>
-              {daysRemaining} {daysRemaining === 1 ? 'day' : 'days'} of bonus features remaining
-            </Text>
-          </View>
-          <Text style={[styles.trialArrow, { color: colors.secondary.dark }]}>→</Text>
-        </TouchableOpacity>
-      )}
-
-      {/* Bonus Ended Banner - only show after subscription loaded */}
-      {!subscriptionLoading && trialExpired && !isPremium && (
-        <TouchableOpacity
-          style={[styles.trialBanner, { backgroundColor: colors.warning.light }]}
-          onPress={() => navigation.navigate('Subscription')}
-          activeOpacity={0.8}
-        >
-          <View style={styles.trialTextContainer}>
-            <Text style={[styles.trialTitle, { color: colors.text.primary }]}>
-              Welcome Bonus Ended
-            </Text>
-            <Text style={[styles.trialSubtext, { color: colors.text.secondary }]}>
-              Upgrade for premium features • Tap to view plans
-            </Text>
-          </View>
-          <Text style={[styles.trialArrow, { color: colors.warning.dark }]}>→</Text>
-        </TouchableOpacity>
-      )}
-
       {/* Main Content - Centered CTA */}
       <View style={styles.mainContent}>
-        {/* Big Visual - Compass icon */}
+        {/* Big Visual - Rotates based on time of day */}
         <View style={[styles.heroContainer, { backgroundColor: colors.primary.main + '15' }]}>
-          <Text style={styles.heroEmoji}>🧭</Text>
+          <Text style={styles.heroEmoji}>{hasKids ? heroEmoji : '👨‍👩‍👧‍👦'}</Text>
         </View>
 
         {/* Headline */}
@@ -117,7 +95,7 @@ const HomeScreen = () => {
         {hasKids ? (
           <TouchableOpacity onPress={handleSetupKids} activeOpacity={0.7}>
             <Text style={[styles.subtext, { color: colors.text.secondary }]}>
-              Activity ideas for {kids.map(k => k.name).join(' & ')}
+              Activity ideas for {(kids || []).map(k => k.name).join(' & ')}
             </Text>
             <Text style={[styles.agesText, { color: colors.text.tertiary }]}>
               Ages {getAgeRangeString()} • Tap to manage
@@ -136,17 +114,17 @@ const HomeScreen = () => {
             variant="primary"
             size="lg"
             fullWidth
-            disabled={!recommendationsAllowed && !isPremium && hasKids}
+            disabled={!recommendationsAllowed && !hasPremiumLifetime && hasKids}
           >
             {!hasKids
               ? 'Add Your Kids'
-              : (!recommendationsAllowed && !isPremium)
+              : (!recommendationsAllowed && !hasPremiumLifetime)
                 ? 'Get More Ideas'
                 : 'Find an Activity'}
           </Button>
 
           {/* Usage indicator */}
-          {hasKids && !isPremium && usage?.recommendations && (
+          {hasKids && !hasPremiumLifetime && usage?.recommendations && (
             <Text style={[styles.usageText, { color: colors.text.tertiary }]}>
               {usage.recommendations.remaining === 'unlimited'
                 ? 'Unlimited recommendations'
@@ -155,9 +133,9 @@ const HomeScreen = () => {
           )}
 
           {/* Upgrade link when limit reached */}
-          {hasKids && !recommendationsAllowed && !isPremium && (
+          {hasKids && !recommendationsAllowed && !hasPremiumLifetime && (
             <TouchableOpacity
-              onPress={() => setShowPaywall(true)}
+              onPress={() => navigation.navigate('Store')}
               style={styles.upgradeLink}
             >
               <Text style={[styles.upgradeText, { color: colors.primary.main }]}>
@@ -233,30 +211,6 @@ const styles = StyleSheet.create({
   },
   upgradeText: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  trialBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginHorizontal: 16,
-    marginTop: 23,
-    borderRadius: 12,
-  },
-  trialTextContainer: {
-    flex: 1,
-  },
-  trialTitle: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  trialSubtext: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  trialArrow: {
-    fontSize: 18,
     fontWeight: '600',
   },
 });

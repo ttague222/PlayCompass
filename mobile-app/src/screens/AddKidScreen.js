@@ -14,6 +14,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Keyboard,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -84,6 +85,9 @@ const AddKidScreen = () => {
       );
       return;
     }
+
+    // Dismiss keyboard first to prevent focus issues during navigation
+    Keyboard.dismiss();
 
     const kidData = {
       name: name.trim(),

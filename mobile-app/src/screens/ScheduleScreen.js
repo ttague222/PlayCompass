@@ -19,7 +19,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useScheduler } from '../context/SchedulerContext';
-import { useSubscription } from '../context/SubscriptionContext';
 import { useHistory } from '../context/HistoryContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { Card, Button, IconButton, Badge, ScreenWrapper } from '../components';
@@ -33,7 +32,6 @@ const ScheduleScreen = () => {
   const route = useRoute();
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const { checkFeature } = useSubscription();
   const {
     schedules,
     upcomingActivities,
@@ -90,9 +88,6 @@ const ScheduleScreen = () => {
       navigation.setParams({ activityToSchedule: undefined });
     }
   }, [route.params?.activityToSchedule]);
-
-  // Check premium access (uses effectiveTier, so trial users have access)
-  const hasSchedulingAccess = checkFeature('scheduling');
 
   // Generate week dates
   const weekDates = useMemo(() => {
@@ -440,7 +435,7 @@ const ScheduleScreen = () => {
           </Text>
           <View style={styles.emptyButtonRow}>
             <Button
-              onPress={() => navigation.navigate('TimeSelect')}
+              onPress={() => navigation.navigate('KidsSelectStep')}
               variant="primary"
               style={styles.emptyActionButton}
             >
@@ -497,33 +492,6 @@ const ScheduleScreen = () => {
       </View>
     );
   };
-
-  if (!hasSchedulingAccess) {
-    return (
-      <ScreenWrapper>
-        <View style={styles.header}>
-          <IconButton icon="←" onPress={handleBack} variant="ghost" size="md" />
-          <Text style={[styles.headerTitle, { color: colors.text.primary }]}>Schedule</Text>
-          <View style={{ width: 44 }} />
-        </View>
-        <View style={styles.premiumRequired}>
-          <Text style={styles.premiumEmoji}>📅</Text>
-          <Text style={[styles.premiumTitle, { color: colors.text.primary }]}>
-            Activity Scheduling
-          </Text>
-          <Text style={[styles.premiumText, { color: colors.text.secondary }]}>
-            Plan your week with scheduled activities and reminders. Upgrade to Premium to access this feature.
-          </Text>
-          <Button
-            onPress={() => navigation.navigate('Subscription')}
-            style={styles.upgradeButton}
-          >
-            Upgrade to Premium
-          </Button>
-        </View>
-      </ScreenWrapper>
-    );
-  }
 
   return (
     <ScreenWrapper>
@@ -775,7 +743,7 @@ const ScheduleScreen = () => {
                       variant="primary"
                       onPress={() => {
                         handleCloseSavedPicker();
-                        navigation.navigate('TimeSelect');
+                        navigation.navigate('KidsSelectStep');
                       }}
                       style={styles.emptyPickerButton}
                     >
@@ -818,7 +786,7 @@ const ScheduleScreen = () => {
                       variant="primary"
                       onPress={() => {
                         handleCloseSavedPicker();
-                        navigation.navigate('TimeSelect');
+                        navigation.navigate('KidsSelectStep');
                       }}
                       style={styles.emptyPickerButton}
                     >

@@ -412,7 +412,7 @@ const SavedActivitiesScreen = () => {
                 description="Swipe right on activities you like to save them here."
               />
               <Button
-                onPress={() => navigation.navigate('TimeSelect')}
+                onPress={() => navigation.navigate('KidsSelectStep')}
                 variant="primary"
                 style={styles.emptyButton}
               >
@@ -452,7 +452,7 @@ const SavedActivitiesScreen = () => {
                 description="Tap the star on activities you love to save them here."
               />
               <Button
-                onPress={() => navigation.navigate('TimeSelect')}
+                onPress={() => navigation.navigate('KidsSelectStep')}
                 variant="primary"
                 style={styles.emptyButton}
               >

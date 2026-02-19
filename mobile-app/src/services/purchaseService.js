@@ -1,10 +1,15 @@
 /**
  * PlayCompass Purchase Service
  *
- * Handles in-app purchases via RevenueCat
+ * Handles in-app purchases via RevenueCat for activity packs and premium lifetime.
  */
 
 import { Platform } from 'react-native';
+import {
+  ACTIVITY_PACKS,
+  PREMIUM_LIFETIME,
+  PRODUCT_TO_PACK,
+} from '../data/activityPacks';
 
 // Dynamically import RevenueCat to handle cases where native module isn't available
 let Purchases = null;
@@ -32,20 +37,46 @@ try {
 
 // RevenueCat API keys
 const REVENUECAT_API_KEYS = {
-  ios: 'test_ycTHGMubpEaTHbnahLzhPoiHAgK', // TODO: Add iOS key when ready
+  ios: 'appl_dYUYWoTgujFJiMXmAGHvpVgqLAP', // TODO: Replace with production iOS key
   android: 'goog_lgSPiIvpocHRmPfRNoyMxvLIyga',
 };
 
 // Product identifiers - these should match your RevenueCat products
 export const PRODUCT_IDS = {
+  // Activity Packs (non-consumable one-time purchases)
+  pack_educational: 'playcompass_pack_educational',
+  pack_creative: 'playcompass_pack_creative',
+  pack_active: 'playcompass_pack_active',
+  pack_games: 'playcompass_pack_games',
+  pack_calm: 'playcompass_pack_calm',
+  pack_outdoor: 'playcompass_pack_outdoor',
+  pack_social: 'playcompass_pack_social',
+  pack_music: 'playcompass_pack_music',
+  // Premium Lifetime (non-consumable one-time purchase)
+  premium_lifetime: 'playcompass_premium_lifetime',
+  // Legacy subscription IDs (kept for restore compatibility)
   plus_monthly: 'playcompass_plus_monthly',
   family_monthly: 'playcompass_family_monthly',
 };
 
-// Map RevenueCat product IDs to our tier names
-const PRODUCT_TO_TIER = {
-  [PRODUCT_IDS.plus_monthly]: 'plus',
-  [PRODUCT_IDS.family_monthly]: 'family',
+// Entitlement identifiers in RevenueCat
+const ENTITLEMENTS = {
+  // Pack entitlements
+  pack_educational: 'pack_educational',
+  pack_creative: 'pack_creative',
+  pack_active: 'pack_active',
+  pack_games: 'pack_games',
+  pack_calm: 'pack_calm',
+  pack_outdoor: 'pack_outdoor',
+  pack_social: 'pack_social',
+  pack_music: 'pack_music',
+  // Premium lifetime entitlement
+  premium_lifetime: 'premium_lifetime',
+  // Legacy entitlements (for backwards compatibility with old subscribers)
+  plus: 'plus',
+  family: 'family',
+  playcompass_plus: 'playcompass_plus',
+  playcompass_family: 'playcompass_family',
 };
 
 let isInitialized = false;
@@ -67,12 +98,10 @@ export const initializePurchases = async () => {
 
   try {
     // Set log level (use DEBUG in development, ERROR in production)
-    // This might fail if native module isn't properly linked
     if (typeof Purchases.setLogLevel === 'function') {
       try {
         Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.VERBOSE : LOG_LEVEL.ERROR);
       } catch (logError) {
-        // setLogLevel failed - native module not available
         console.warn('[Purchases] setLogLevel failed, disabling purchases:', logError.message);
         Purchases = null;
         return;
@@ -89,9 +118,7 @@ export const initializePurchases = async () => {
     console.log('[Purchases] RevenueCat initialized successfully');
   } catch (error) {
     console.error('[Purchases] Failed to initialize RevenueCat:', error);
-    // Mark Purchases as unavailable so we don't keep retrying
     Purchases = null;
-    // Don't throw - allow app to continue without purchases
   }
 };
 
@@ -158,6 +185,17 @@ export const getOfferings = async () => {
 };
 
 /**
+ * Find a package by product ID from offerings
+ * @param {string} productId - Product ID to find
+ * @param {Array} offerings - Array of offerings (optional, will fetch if not provided)
+ * @returns {Promise<Object|null>} Package or null
+ */
+export const findPackageByProductId = async (productId, offerings = null) => {
+  const packages = offerings || await getOfferings();
+  return packages.find((pkg) => pkg.product.identifier === productId) || null;
+};
+
+/**
  * Purchase a package
  * @param {Object} pkg - RevenueCat package object
  * @returns {Promise<Object>} Purchase result
@@ -177,14 +215,15 @@ export const purchasePackage = async (pkg) => {
 
     const { customerInfo } = await Purchases.purchasePackage(pkg);
 
-    // Determine which tier was purchased
-    const tier = getTierFromCustomerInfo(customerInfo);
+    // Extract owned packs and premium status from customer info
+    const { ownedPacks, hasPremiumLifetime } = getOwnedPacksFromCustomerInfo(customerInfo);
 
-    console.log('[Purchases] Purchase successful, tier:', tier);
+    console.log('[Purchases] Purchase successful, ownedPacks:', ownedPacks, 'hasPremiumLifetime:', hasPremiumLifetime);
 
     return {
       success: true,
-      tier,
+      ownedPacks,
+      hasPremiumLifetime,
       customerInfo,
     };
   } catch (error) {
@@ -198,12 +237,44 @@ export const purchasePackage = async (pkg) => {
 };
 
 /**
+ * Purchase an activity pack by pack ID
+ * @param {string} packId - Pack ID (e.g., 'educational', 'creative')
+ * @returns {Promise<Object>} Purchase result
+ */
+export const purchasePack = async (packId) => {
+  const pack = ACTIVITY_PACKS[packId];
+  if (!pack) {
+    return { success: false, error: `Unknown pack: ${packId}` };
+  }
+
+  const pkg = await findPackageByProductId(pack.productId);
+  if (!pkg) {
+    return { success: false, error: `Package not found for ${packId}. Check RevenueCat configuration.` };
+  }
+
+  return purchasePackage(pkg);
+};
+
+/**
+ * Purchase premium lifetime
+ * @returns {Promise<Object>} Purchase result
+ */
+export const purchaseLifetime = async () => {
+  const pkg = await findPackageByProductId(PREMIUM_LIFETIME.productId);
+  if (!pkg) {
+    return { success: false, error: 'Premium Lifetime package not found. Check RevenueCat configuration.' };
+  }
+
+  return purchasePackage(pkg);
+};
+
+/**
  * Restore previous purchases
  * @returns {Promise<Object>} Restore result
  */
 export const restorePurchases = async () => {
   if (!Purchases) {
-    return { success: false, tier: 'free', error: 'Purchases not available' };
+    return { success: false, ownedPacks: [], hasPremiumLifetime: false, error: 'Purchases not available' };
   }
 
   try {
@@ -211,32 +282,33 @@ export const restorePurchases = async () => {
       await initializePurchases();
     }
     if (!isInitialized) {
-      return { success: false, tier: 'free', error: 'Purchases not initialized' };
+      return { success: false, ownedPacks: [], hasPremiumLifetime: false, error: 'Purchases not initialized' };
     }
 
     const customerInfo = await Purchases.restorePurchases();
-    const tier = getTierFromCustomerInfo(customerInfo);
+    const { ownedPacks, hasPremiumLifetime } = getOwnedPacksFromCustomerInfo(customerInfo);
 
-    console.log('[Purchases] Purchases restored, tier:', tier);
+    console.log('[Purchases] Purchases restored, ownedPacks:', ownedPacks, 'hasPremiumLifetime:', hasPremiumLifetime);
 
     return {
       success: true,
-      tier,
+      ownedPacks,
+      hasPremiumLifetime,
       customerInfo,
     };
   } catch (error) {
     console.error('[Purchases] Restore failed:', error);
-    return { success: false, error: error.message };
+    return { success: false, ownedPacks: [], hasPremiumLifetime: false, error: error.message };
   }
 };
 
 /**
- * Get current subscription status
- * @returns {Promise<Object>} Current subscription info
+ * Get current purchase status
+ * @returns {Promise<Object>} Current purchase info
  */
-export const getSubscriptionStatus = async () => {
+export const getPurchaseStatus = async () => {
   if (!Purchases) {
-    return { tier: 'free', isActive: false, isTrialPeriod: false };
+    return { ownedPacks: [], hasPremiumLifetime: false };
   }
 
   try {
@@ -244,83 +316,116 @@ export const getSubscriptionStatus = async () => {
       await initializePurchases();
     }
     if (!isInitialized) {
-      return { tier: 'free', isActive: false, isTrialPeriod: false };
+      return { ownedPacks: [], hasPremiumLifetime: false };
     }
 
     const customerInfo = await Purchases.getCustomerInfo();
-    const tier = getTierFromCustomerInfo(customerInfo);
-
-    // Get expiration date and trial info if subscribed
-    let expiresAt = null;
-    let isTrialPeriod = false;
-    let trialEndsAt = null;
-
-    if (tier !== 'free') {
-      const entitlements = customerInfo.entitlements.active;
-      const entitlement = Object.values(entitlements)[0];
-      if (entitlement) {
-        if (entitlement.expirationDate) {
-          expiresAt = new Date(entitlement.expirationDate);
-        }
-        // Check if currently in trial period
-        if (entitlement.periodType === 'trial') {
-          isTrialPeriod = true;
-          trialEndsAt = expiresAt;
-        }
-      }
-    }
+    const { ownedPacks, hasPremiumLifetime } = getOwnedPacksFromCustomerInfo(customerInfo);
 
     return {
-      tier,
-      isActive: tier !== 'free',
-      expiresAt,
-      isTrialPeriod,
-      trialEndsAt,
+      ownedPacks,
+      hasPremiumLifetime,
       customerInfo,
     };
   } catch (error) {
-    console.error('[Purchases] Failed to get subscription status:', error);
-    return { tier: 'free', isActive: false, isTrialPeriod: false };
+    console.error('[Purchases] Failed to get purchase status:', error);
+    return { ownedPacks: [], hasPremiumLifetime: false };
   }
 };
 
+// Legacy alias for backwards compatibility
+export const getSubscriptionStatus = async () => {
+  const status = await getPurchaseStatus();
+  return {
+    ...status,
+    tier: status.hasPremiumLifetime ? 'premiumLifetime' : 'free',
+    isActive: status.hasPremiumLifetime || status.ownedPacks.length > 0,
+  };
+};
+
 /**
- * Determine tier from RevenueCat customer info
+ * Extract owned packs and premium status from RevenueCat customer info
  * @param {Object} customerInfo - RevenueCat customer info
- * @returns {string} Tier name ('free', 'plus', or 'family')
+ * @returns {Object} { ownedPacks: string[], hasPremiumLifetime: boolean }
  */
-const getTierFromCustomerInfo = (customerInfo) => {
+const getOwnedPacksFromCustomerInfo = (customerInfo) => {
   const activeEntitlements = customerInfo.entitlements.active;
+  const ownedPacks = [];
+  let hasPremiumLifetime = false;
 
-  // Check for family tier first (higher tier)
+  // Check for premium lifetime entitlement
   if (
-    activeEntitlements['family'] ||
-    activeEntitlements['playcompass_family'] ||
-    activeEntitlements['Watchlight Interactive Family']
+    activeEntitlements[ENTITLEMENTS.premium_lifetime] ||
+    // Legacy entitlements that should grant lifetime
+    activeEntitlements[ENTITLEMENTS.family] ||
+    activeEntitlements[ENTITLEMENTS.playcompass_family]
   ) {
-    return 'family';
+    hasPremiumLifetime = true;
   }
 
-  // Check for plus tier - includes "Watchlight Interactive Pro" entitlement
+  // Check for legacy plus subscription (grant lifetime as loyalty reward)
   if (
-    activeEntitlements['plus'] ||
-    activeEntitlements['playcompass_plus'] ||
-    activeEntitlements['Watchlight Interactive Pro']
+    activeEntitlements[ENTITLEMENTS.plus] ||
+    activeEntitlements[ENTITLEMENTS.playcompass_plus]
   ) {
-    return 'plus';
+    hasPremiumLifetime = true;
   }
 
-  // Default to free
-  return 'free';
+  // Check for individual pack entitlements
+  const packEntitlements = [
+    { entitlement: ENTITLEMENTS.pack_educational, packId: 'educational' },
+    { entitlement: ENTITLEMENTS.pack_creative, packId: 'creative' },
+    { entitlement: ENTITLEMENTS.pack_active, packId: 'active' },
+    { entitlement: ENTITLEMENTS.pack_games, packId: 'games' },
+    { entitlement: ENTITLEMENTS.pack_calm, packId: 'calm' },
+    { entitlement: ENTITLEMENTS.pack_outdoor, packId: 'outdoor' },
+    { entitlement: ENTITLEMENTS.pack_social, packId: 'social' },
+    { entitlement: ENTITLEMENTS.pack_music, packId: 'music' },
+  ];
+
+  for (const { entitlement, packId } of packEntitlements) {
+    if (activeEntitlements[entitlement]) {
+      ownedPacks.push(packId);
+    }
+  }
+
+  // Also check non-subscription purchases (for non-consumable products)
+  const nonSubscriptionTransactions = customerInfo.nonSubscriptionTransactions || [];
+  for (const transaction of nonSubscriptionTransactions) {
+    const productId = transaction.productIdentifier || transaction.productId;
+
+    // Check if it's a pack product
+    const packId = PRODUCT_TO_PACK[productId];
+    if (packId && !ownedPacks.includes(packId)) {
+      ownedPacks.push(packId);
+    }
+
+    // Check if it's premium lifetime
+    if (productId === PREMIUM_LIFETIME.productId) {
+      hasPremiumLifetime = true;
+    }
+  }
+
+  return { ownedPacks, hasPremiumLifetime };
 };
 
 /**
- * Check if user has an active subscription
+ * Check if user has premium lifetime
  * @returns {Promise<boolean>}
  */
-export const hasActiveSubscription = async () => {
-  const status = await getSubscriptionStatus();
-  return status.isActive;
+export const hasPremiumLifetime = async () => {
+  const status = await getPurchaseStatus();
+  return status.hasPremiumLifetime;
+};
+
+/**
+ * Check if user owns a specific pack
+ * @param {string} packId - Pack ID to check
+ * @returns {Promise<boolean>}
+ */
+export const ownsPack = async (packId) => {
+  const status = await getPurchaseStatus();
+  return status.hasPremiumLifetime || status.ownedPacks.includes(packId);
 };
 
 /**
@@ -330,13 +435,12 @@ export const hasActiveSubscription = async () => {
  */
 export const addCustomerInfoListener = (callback) => {
   if (!Purchases || !isInitialized) {
-    // Return a no-op unsubscribe function
     return () => {};
   }
 
   const listener = Purchases.addCustomerInfoUpdateListener((customerInfo) => {
-    const tier = getTierFromCustomerInfo(customerInfo);
-    callback({ tier, customerInfo });
+    const { ownedPacks, hasPremiumLifetime } = getOwnedPacksFromCustomerInfo(customerInfo);
+    callback({ ownedPacks, hasPremiumLifetime, customerInfo });
   });
 
   return () => {
@@ -349,10 +453,15 @@ export default {
   setUserId,
   clearUserId,
   getOfferings,
+  findPackageByProductId,
   purchasePackage,
+  purchasePack,
+  purchaseLifetime,
   restorePurchases,
+  getPurchaseStatus,
   getSubscriptionStatus,
-  hasActiveSubscription,
+  hasPremiumLifetime,
+  ownsPack,
   addCustomerInfoListener,
   PRODUCT_IDS,
 };

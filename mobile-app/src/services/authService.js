@@ -117,7 +117,7 @@ export const createOrUpdateUserProfile = async (user) => {
   try {
     const userDoc = await userRef.get();
 
-    if (!userDoc.exists) {
+    if (!userDoc.exists()) {
       // Create new user profile
       await userRef.set({
         ...userData,
@@ -175,7 +175,7 @@ export const createOrUpdateUserProfile = async (user) => {
 export const getUserProfile = async (uid) => {
   try {
     const userDoc = await usersCollection.doc(uid).get();
-    if (userDoc.exists) {
+    if (userDoc.exists()) {
       return { success: true, profile: userDoc.data() };
     }
     return { success: false, error: 'User profile not found' };

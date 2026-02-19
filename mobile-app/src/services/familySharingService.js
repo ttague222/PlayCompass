@@ -51,7 +51,7 @@ export const createFamily = async (userId, familyName) => {
 export const getFamily = async (familyId) => {
   try {
     const doc = await firestore().collection('families').doc(familyId).get();
-    if (doc.exists) {
+    if (doc.exists()) {
       return { success: true, family: { id: doc.id, ...doc.data() } };
     }
     return { success: false, error: 'Family not found' };
@@ -67,7 +67,7 @@ export const getFamily = async (familyId) => {
 export const getUserFamily = async (userId) => {
   try {
     const userDoc = await firestore().collection('users').doc(userId).get();
-    if (userDoc.exists && userDoc.data()?.familyId) {
+    if (userDoc.exists() && userDoc.data()?.familyId) {
       return getFamily(userDoc.data().familyId);
     }
     return { success: true, family: null };
@@ -125,7 +125,7 @@ export const joinFamily = async (userId, inviteCode) => {
       .doc(inviteCode.toUpperCase())
       .get();
 
-    if (!inviteDoc.exists) {
+    if (!inviteDoc.exists()) {
       return { success: false, error: 'Invalid invite code' };
     }
 

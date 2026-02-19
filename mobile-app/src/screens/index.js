@@ -13,3 +13,6 @@ export { default as AcceptedActivitiesScreen } from './AcceptedActivitiesScreen'
 export { default as ActivityDetailScreen } from './ActivityDetailScreen';
 export { default as SavedActivitiesScreen } from './SavedActivitiesScreen';
 export { default as CustomActivitiesScreen } from './CustomActivitiesScreen';
+
+// Find Activity Flow (multi-step)
+export * from './FindActivity';

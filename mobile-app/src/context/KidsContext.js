@@ -22,25 +22,39 @@ import { useSubscription } from './SubscriptionContext';
 const KidsContext = createContext(null);
 
 export const KidsProvider = ({ children }) => {
-  const { kids: authKids, userProfile } = useAuth();
+  const { kids: authKids, userProfile, setKidsLocally } = useAuth();
   const { checkCanAddKid, tierConfig } = useSubscription();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Use kids from auth context (real-time synced)
+  // Use kids from auth context (updated locally, no real-time listener)
   const kids = authKids || [];
 
-  // Add a new kid
+  // Add a new kid - simple flow, no listener management needed
   const addKid = useCallback(async (kidData) => {
     setLoading(true);
     setError(null);
-    const result = await serviceAddKid(kidData);
-    if (!result.success) {
-      setError(result.error);
+
+    try {
+      const result = await serviceAddKid(kidData);
+
+      if (result.success && result.allKids) {
+        // Update local state - no real-time listener to worry about
+        console.log('[KidsContext] Setting kids locally:', result.allKids.length);
+        setKidsLocally(result.allKids);
+      } else if (!result.success) {
+        setError(result.error);
+      }
+
+      setLoading(false);
+      return result;
+    } catch (err) {
+      console.error('[KidsContext] Error adding kid:', err);
+      setError(err.message);
+      setLoading(false);
+      return { success: false, error: err.message };
     }
-    setLoading(false);
-    return result;
-  }, []);
+  }, [setKidsLocally]);
 
   // Update a kid
   const updateKid = useCallback(async (kidId, updates) => {
@@ -97,7 +111,11 @@ export const KidsProvider = ({ children }) => {
   // Get age range string (e.g., "3-8 years")
   const getAgeRangeString = useCallback(() => {
     if (kids.length === 0) return null;
-    const ages = kids.map((k) => k.age);
+    // Filter to only valid numeric ages to prevent NaN issues
+    const ages = kids
+      .map((k) => k.age)
+      .filter((age) => typeof age === 'number' && !isNaN(age));
+    if (ages.length === 0) return null;
     const minAge = Math.min(...ages);
     const maxAge = Math.max(...ages);
     if (minAge === maxAge) return `${minAge} years`;

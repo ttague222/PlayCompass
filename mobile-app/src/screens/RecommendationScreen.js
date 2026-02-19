@@ -17,7 +17,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useIsFocused } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useKids } from '../context/KidsContext';
 import { useHistory } from '../context/HistoryContext';
@@ -34,6 +34,8 @@ import {
   getCategoryBoosts,
 } from '../services/preferenceLearningService';
 import { getActivityWeatherTag, isActivitySuitableForWeather } from '../services/weatherService';
+import { getPackForActivity, getPackInfo } from '../data/activityPacks';
+import Paywall from '../components/Paywall';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SWIPE_THRESHOLD = SCREEN_WIDTH * 0.25;
@@ -491,14 +493,16 @@ const getPersonalizedReason = (activity, kids) => {
 const RecommendationScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
+  const isFocused = useIsFocused();
   const { colors, isDark } = useTheme();
   const { kids: allKids } = useKids();
   const { saveActivityToHistory } = useHistory();
-  const { recordRecommendationUsage, effectiveTier, isInTrial } = useSubscription();
+  const { recordRecommendationUsage, effectiveTier, isInTrial, isActivityUnlocked, hasPremiumLifetime, ownedPacks } = useSubscription();
 
   const { duration, location, energy, materials, selectedKids: routeSelectedKids, surpriseActivity, weather, seasonFilter } = route.params || {};
 
   // Use selected kids from route params, or fall back to all kids
+  // Only update when screen is focused to prevent crashes from background state updates
   const kids = routeSelectedKids || allKids;
 
   const [recommendations, setRecommendations] = useState([]);
@@ -508,9 +512,16 @@ const RecommendationScreen = () => {
   const [acceptedActivities, setAcceptedActivities] = useState([]);
   const [rejectedActivities, setRejectedActivities] = useState([]);
   const [learningMessage, setLearningMessage] = useState(null);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+  const [paywallActivity, setPaywallActivity] = useState(null);
 
   // Fetch recommendations from API or fall back to local
   useEffect(() => {
+    // Only run when screen is focused to prevent background crashes
+    if (!isFocused) {
+      return;
+    }
+
     // Create abort controller to cancel previous requests
     const abortController = new AbortController();
     let isCancelled = false;
@@ -605,6 +616,8 @@ const RecommendationScreen = () => {
             adultSupervision: a.adult_supervision,
             popularityScore: a.popularity_score,
             relevanceScore: a.relevance_score,
+            // Map backend 'premium' field to frontend 'isFree' field
+            isFree: a.isFree !== undefined ? a.isFree : !a.premium,
           }));
 
           // If API returned fewer than requested, supplement with local data
@@ -721,7 +734,7 @@ const RecommendationScreen = () => {
       isCancelled = true;
       abortController.abort();
     };
-  }, [kids, duration, location, energy, materials, surpriseActivity, weather, seasonFilter]);
+  }, [kids, duration, location, energy, materials, surpriseActivity, weather, seasonFilter, isFocused]);
 
   const position = useState(new Animated.ValueXY())[0];
 
@@ -742,6 +755,15 @@ const RecommendationScreen = () => {
     // Use ref to get the latest activity (avoids stale closure)
     const activity = currentActivityRef.current;
     if (!activity) return;
+
+    // Check if activity is locked
+    const unlocked = isActivityUnlocked(activity);
+    if (!unlocked) {
+      // Show paywall for locked activity
+      setPaywallActivity(activity);
+      setPaywallVisible(true);
+      return;
+    }
 
     setAcceptedActivities((prev) => [...prev, activity]);
     Analytics.likeActivity(activity.id, activity.title, activity.category);
@@ -768,7 +790,7 @@ const RecommendationScreen = () => {
       position.setValue({ x: 0, y: 0 });
       setCurrentIndex((prev) => prev + 1);
     });
-  }, [position, saveActivityToHistory, duration, kids]);
+  }, [position, saveActivityToHistory, duration, kids, isActivityUnlocked]);
 
   const handleReject = useCallback(async () => {
     // Use ref to get the latest activity (avoids stale closure)
@@ -852,11 +874,57 @@ const RecommendationScreen = () => {
     setRejectedActivities([]);
   };
 
+  const handlePaywallClose = () => {
+    setPaywallVisible(false);
+    setPaywallActivity(null);
+  };
+
+  const handlePaywallPurchaseSuccess = useCallback(async () => {
+    // After successful purchase, re-check if the activity is now unlocked
+    // and if so, accept it
+    const activity = paywallActivity;
+    if (activity && isActivityUnlocked(activity)) {
+      setPaywallVisible(false);
+      setPaywallActivity(null);
+
+      // Now accept the activity since it's unlocked
+      setAcceptedActivities((prev) => [...prev, activity]);
+      Analytics.likeActivity(activity.id, activity.title, activity.category);
+
+      await Promise.all([
+        saveActivityToHistory(activity, true, duration),
+        recordSwipe(activity, true),
+      ]);
+
+      if (kids && kids.length > 0 && kids[0]?.name) {
+        const message = await getLearningMessage(kids[0].name);
+        if (message) {
+          setLearningMessage(message);
+        }
+      }
+
+      Animated.spring(position, {
+        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
+        useNativeDriver: false,
+      }).start(() => {
+        position.setValue({ x: 0, y: 0 });
+        setCurrentIndex((prev) => prev + 1);
+      });
+    } else {
+      // Just close the paywall
+      setPaywallVisible(false);
+      setPaywallActivity(null);
+    }
+  }, [paywallActivity, isActivityUnlocked, saveActivityToHistory, duration, kids, position]);
+
   const renderActivityCard = () => {
     if (!currentActivity) return null;
 
     const category = CATEGORIES[currentActivity.category?.toUpperCase()];
     const durationInfo = DURATIONS[currentActivity.duration?.toUpperCase()];
+    const activityUnlocked = isActivityUnlocked(currentActivity);
+    const packId = getPackForActivity(currentActivity);
+    const packInfo = packId ? getPackInfo(packId) : null;
 
     return (
       <Animated.View
@@ -870,6 +938,18 @@ const RecommendationScreen = () => {
         <Animated.View style={[styles.nopeOverlay, { opacity: nopeOpacity, backgroundColor: colors.text.tertiary + '15' }]}>
           <Text style={[styles.overlayEmoji]}>✕</Text>
         </Animated.View>
+
+        {/* Lock Icon Overlay for locked activities */}
+        {!activityUnlocked && (
+          <View style={styles.lockOverlay}>
+            <View style={[styles.lockBadge, { backgroundColor: colors.surface.primary }]}>
+              <Text style={styles.lockIcon}>🔒</Text>
+              <Text style={[styles.lockText, { color: colors.text.secondary }]}>
+                {packInfo ? packInfo.name : 'Premium'}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Card Content */}
         <View style={styles.cardContent}>
@@ -1107,6 +1187,14 @@ const RecommendationScreen = () => {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Paywall Modal */}
+      <Paywall
+        visible={paywallVisible}
+        onClose={handlePaywallClose}
+        activity={paywallActivity}
+        onPurchaseSuccess={handlePaywallPurchaseSuccess}
+      />
 
     </ScreenWrapper>
   );
@@ -1346,6 +1434,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     flex: 1,
+  },
+  lockOverlay: {
+    position: 'absolute',
+    top: 12,
+    left: 0,
+    right: 0,
+    zIndex: 15,
+    alignItems: 'center',
+  },
+  lockBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  lockIcon: {
+    fontSize: 16,
+    marginRight: 6,
+  },
+  lockText: {
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

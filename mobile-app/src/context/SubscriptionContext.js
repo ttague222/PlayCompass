@@ -1,55 +1,67 @@
 /**
  * PlayCompass Subscription Context
  *
- * Manages subscription state and feature gates
+ * Manages purchase state (owned packs and premium lifetime) and provides
+ * feature access checks to the entire app.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import functions from '@react-native-firebase/functions';
 import { useAuth } from './AuthContext';
 import {
-  SUBSCRIPTION_TIERS,
-  getSubscriptionStatus,
-  getTrialStatus,
+  ACTIVITY_PACKS,
+  PREMIUM_LIFETIME,
+  isActivityUnlocked as checkActivityUnlocked,
+  hasPackAccess as checkPackAccess,
+  getPackForActivity,
+  getAllPacks,
+} from '../data/activityPacks';
+import {
+  TIERS,
+  getTierConfig,
+  isFeatureAvailable,
   canGetRecommendations,
   canAddKid,
-  isCategoryAvailable,
-  isFeatureAvailable,
   incrementRecommendationUsage,
-  getUpgradeSuggestion,
-  updateSubscription,
+  updatePurchases,
+  getPurchaseStatus as getFirestorePurchaseStatus,
+  getPackSuggestion,
 } from '../services/subscriptionService';
 import {
   setUserId as setPurchaseUserId,
   clearUserId as clearPurchaseUserId,
-  getSubscriptionStatus as getPurchaseStatus,
+  getPurchaseStatus as getRevenueCatPurchaseStatus,
   getOfferings,
-  purchasePackage,
+  purchasePack as purchasePackService,
+  purchaseLifetime as purchaseLifetimeService,
   restorePurchases as restorePurchasesService,
   addCustomerInfoListener,
 } from '../services/purchaseService';
 
 const SubscriptionContext = createContext(null);
 
-// Trial tier - users get 'plus' features during trial
-const TRIAL_TIER = 'plus';
-
 export const SubscriptionProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
-  const [subscription, setSubscription] = useState({
-    tier: 'free',
-    isInTrial: false,
-    daysRemaining: 0,
-    trialExpired: false,
+
+  // Purchase state
+  const [purchases, setPurchases] = useState({
+    ownedPacks: [],
+    hasPremiumLifetime: false,
   });
   const [loading, setLoading] = useState(true);
   const [usage, setUsage] = useState(null);
   const [offerings, setOfferings] = useState([]);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
-  // Load subscription status when user changes
+  // Computed values
+  const hasPremiumLifetime = purchases.hasPremiumLifetime;
+  const ownedPacks = purchases.ownedPacks;
+  const tier = hasPremiumLifetime ? 'premiumLifetime' : 'free';
+  const tierConfig = getTierConfig(hasPremiumLifetime);
+  const isPremium = hasPremiumLifetime;
+
+  // Load purchase status when user changes
   useEffect(() => {
-    const loadSubscription = async () => {
+    const loadPurchases = async () => {
       if (user?.uid) {
         setLoading(true);
 
@@ -60,55 +72,32 @@ export const SubscriptionProvider = ({ children }) => {
           console.log('[Subscription] Failed to set purchase user ID:', error);
         }
 
-        // Track the determined tier for usage loading
-        let determinedTier = 'free';
-
-        // Try to get subscription from RevenueCat first
+        // Try to get purchases from RevenueCat first
         try {
-          const purchaseStatus = await getPurchaseStatus();
-          if (purchaseStatus.tier !== 'free') {
-            // User has active subscription via RevenueCat
-            determinedTier = purchaseStatus.tier;
-            setSubscription({
-              tier: purchaseStatus.tier,
-              expiresAt: purchaseStatus.expiresAt,
-              isInTrial: false,
-              daysRemaining: 0,
-              source: 'revenuecat',
+          const rcStatus = await getRevenueCatPurchaseStatus();
+          if (rcStatus.hasPremiumLifetime || rcStatus.ownedPacks.length > 0) {
+            // User has purchases via RevenueCat
+            setPurchases({
+              ownedPacks: rcStatus.ownedPacks,
+              hasPremiumLifetime: rcStatus.hasPremiumLifetime,
             });
 
             // Sync to Firestore
-            await updateSubscription(user.uid, purchaseStatus.tier, {
-              expiresAt: purchaseStatus.expiresAt,
-              platform: 'revenuecat',
-            });
+            await updatePurchases(user.uid, rcStatus.ownedPacks, rcStatus.hasPremiumLifetime);
           } else {
-            // Fall back to Firestore status (includes trial info)
-            const status = await getSubscriptionStatus(user.uid);
-            console.log('[Subscription] Firestore status:', status);
-            determinedTier = status.tier || 'free';
-            setSubscription({
-              tier: status.tier || 'free',
-              isInTrial: status.isInTrial || false,
-              daysRemaining: status.daysRemaining || 0,
-              trialExpired: status.trialExpired || false,
-              trialEndDate: status.trialEndDate,
-              source: 'firestore',
+            // Fall back to Firestore status
+            const firestoreStatus = await getFirestorePurchaseStatus(user.uid);
+            setPurchases({
+              ownedPacks: firestoreStatus.ownedPacks || [],
+              hasPremiumLifetime: firestoreStatus.hasPremiumLifetime || false,
             });
           }
         } catch (error) {
-          // RevenueCat failed, fall back to Firestore
           console.log('[Subscription] RevenueCat check failed, using Firestore:', error);
-          const status = await getSubscriptionStatus(user.uid);
-          console.log('[Subscription] Firestore status (fallback):', status);
-          determinedTier = status.tier || 'free';
-          setSubscription({
-            tier: status.tier || 'free',
-            isInTrial: status.isInTrial || false,
-            daysRemaining: status.daysRemaining || 0,
-            trialExpired: status.trialExpired || false,
-            trialEndDate: status.trialEndDate,
-            source: 'firestore',
+          const firestoreStatus = await getFirestorePurchaseStatus(user.uid);
+          setPurchases({
+            ownedPacks: firestoreStatus.ownedPacks || [],
+            hasPremiumLifetime: firestoreStatus.hasPremiumLifetime || false,
           });
         }
 
@@ -120,8 +109,8 @@ export const SubscriptionProvider = ({ children }) => {
           console.log('[Subscription] Failed to load offerings:', error);
         }
 
-        // Load current usage with the determined tier
-        const recommendationCheck = await canGetRecommendations(determinedTier);
+        // Load current usage
+        const recommendationCheck = await canGetRecommendations(hasPremiumLifetime);
         setUsage({
           recommendations: recommendationCheck,
         });
@@ -134,109 +123,112 @@ export const SubscriptionProvider = ({ children }) => {
         } catch (error) {
           console.log('[Subscription] Failed to clear purchase user:', error);
         }
-        setSubscription({ tier: 'free' });
+        setPurchases({ ownedPacks: [], hasPremiumLifetime: false });
         setOfferings([]);
         setLoading(false);
       }
     };
 
-    loadSubscription();
+    loadPurchases();
   }, [user?.uid]);
 
-  // Listen for RevenueCat subscription changes
+  // Listen for RevenueCat purchase updates
   useEffect(() => {
     if (!user?.uid) return;
 
-    const unsubscribe = addCustomerInfoListener(async ({ tier }) => {
-      console.log('[Subscription] RevenueCat update received, tier:', tier);
-      setSubscription((prev) => ({ ...prev, tier, source: 'revenuecat' }));
+    const unsubscribe = addCustomerInfoListener(async ({ ownedPacks: newOwnedPacks, hasPremiumLifetime: newHasPremiumLifetime }) => {
+      console.log('[Subscription] RevenueCat update received, ownedPacks:', newOwnedPacks, 'hasPremiumLifetime:', newHasPremiumLifetime);
+
+      setPurchases({
+        ownedPacks: newOwnedPacks,
+        hasPremiumLifetime: newHasPremiumLifetime,
+      });
 
       // Sync to Firestore
-      await updateSubscription(user.uid, tier);
+      await updatePurchases(user.uid, newOwnedPacks, newHasPremiumLifetime);
 
       // Refresh usage
-      const recommendationCheck = await canGetRecommendations(tier);
+      const recommendationCheck = await canGetRecommendations(newHasPremiumLifetime);
       setUsage((prev) => ({ ...prev, recommendations: recommendationCheck }));
     });
 
     return unsubscribe;
   }, [user?.uid]);
 
-  // Effective tier: use TRIAL_TIER if in trial, otherwise actual tier
-  const effectiveTier = subscription.isInTrial ? TRIAL_TIER : subscription.tier;
+  // Check if user has access to a specific pack
+  const hasPackAccessFn = useCallback(
+    (packId) => {
+      return checkPackAccess(packId, ownedPacks, hasPremiumLifetime);
+    },
+    [ownedPacks, hasPremiumLifetime]
+  );
 
-  // Get current tier config (based on effective tier for features)
-  const tierConfig = SUBSCRIPTION_TIERS[effectiveTier] || SUBSCRIPTION_TIERS.free;
+  // Check if an activity is unlocked
+  const isActivityUnlockedFn = useCallback(
+    (activity) => {
+      return checkActivityUnlocked(activity, ownedPacks, hasPremiumLifetime);
+    },
+    [ownedPacks, hasPremiumLifetime]
+  );
 
-  // Check if user can use a feature (uses effective tier)
+  // Check if a feature is available
   const checkFeature = useCallback(
     (feature) => {
-      return isFeatureAvailable(feature, effectiveTier);
+      return isFeatureAvailable(feature, ownedPacks, hasPremiumLifetime);
     },
-    [effectiveTier]
+    [ownedPacks, hasPremiumLifetime]
   );
 
-  // Check if user can add more kids (uses effective tier)
+  // Check if user can add more kids
   const checkCanAddKid = useCallback(
     (currentKidCount) => {
-      return canAddKid(currentKidCount, effectiveTier);
+      return canAddKid(currentKidCount, hasPremiumLifetime);
     },
-    [effectiveTier]
+    [hasPremiumLifetime]
   );
 
-  // Check if user can get more recommendations (uses effective tier)
+  // Check if user can get more recommendations
   const checkCanGetRecommendations = useCallback(async () => {
-    const result = await canGetRecommendations(effectiveTier);
+    const result = await canGetRecommendations(hasPremiumLifetime);
     setUsage((prev) => ({ ...prev, recommendations: result }));
     return result;
-  }, [effectiveTier]);
+  }, [hasPremiumLifetime]);
 
   // Record a recommendation session
   const recordRecommendationUsage = useCallback(async () => {
     await incrementRecommendationUsage();
-    // Refresh usage
-    const result = await canGetRecommendations(effectiveTier);
+    const result = await canGetRecommendations(hasPremiumLifetime);
     setUsage((prev) => ({ ...prev, recommendations: result }));
     return result;
-  }, [effectiveTier]);
+  }, [hasPremiumLifetime]);
 
-  // Check if category is available (uses effective tier)
-  const checkCategory = useCallback(
-    (category) => {
-      return isCategoryAvailable(category, effectiveTier);
-    },
-    [effectiveTier]
-  );
-
-  // Get upgrade suggestion (uses actual tier, not effective)
+  // Get suggestion for unlocking an activity
   const getSuggestion = useCallback(
-    (blockedFeature) => {
-      return getUpgradeSuggestion(blockedFeature, subscription.tier);
+    (activity) => {
+      return getPackSuggestion(activity);
     },
-    [subscription.tier]
+    []
   );
 
-  // Purchase a subscription package
-  const purchase = useCallback(
-    async (pkg) => {
+  // Purchase a pack
+  const purchasePack = useCallback(
+    async (packId) => {
       setPurchaseLoading(true);
       try {
-        const result = await purchasePackage(pkg);
+        const result = await purchasePackService(packId);
         if (result.success) {
-          // Update subscription state
-          setSubscription((prev) => ({
-            ...prev,
-            tier: result.tier,
-            source: 'revenuecat',
-          }));
+          setPurchases({
+            ownedPacks: result.ownedPacks,
+            hasPremiumLifetime: result.hasPremiumLifetime,
+          });
 
           // Sync to Firestore
           if (user?.uid) {
-            await updateSubscription(user.uid, result.tier);
+            await updatePurchases(user.uid, result.ownedPacks, result.hasPremiumLifetime);
           }
 
           // Refresh usage
-          const recommendationCheck = await canGetRecommendations(result.tier);
+          const recommendationCheck = await canGetRecommendations(result.hasPremiumLifetime);
           setUsage((prev) => ({ ...prev, recommendations: recommendationCheck }));
         }
         setPurchaseLoading(false);
@@ -249,26 +241,24 @@ export const SubscriptionProvider = ({ children }) => {
     [user?.uid]
   );
 
-  // Restore previous purchases
-  const restorePurchases = useCallback(async () => {
+  // Purchase premium lifetime
+  const purchaseLifetime = useCallback(async () => {
     setPurchaseLoading(true);
     try {
-      const result = await restorePurchasesService();
-      if (result.success && result.tier !== 'free') {
-        // Update subscription state
-        setSubscription((prev) => ({
-          ...prev,
-          tier: result.tier,
-          source: 'revenuecat',
-        }));
+      const result = await purchaseLifetimeService();
+      if (result.success) {
+        setPurchases({
+          ownedPacks: result.ownedPacks,
+          hasPremiumLifetime: result.hasPremiumLifetime,
+        });
 
         // Sync to Firestore
         if (user?.uid) {
-          await updateSubscription(user.uid, result.tier);
+          await updatePurchases(user.uid, result.ownedPacks, result.hasPremiumLifetime);
         }
 
         // Refresh usage
-        const recommendationCheck = await canGetRecommendations(result.tier);
+        const recommendationCheck = await canGetRecommendations(result.hasPremiumLifetime);
         setUsage((prev) => ({ ...prev, recommendations: recommendationCheck }));
       }
       setPurchaseLoading(false);
@@ -279,104 +269,77 @@ export const SubscriptionProvider = ({ children }) => {
     }
   }, [user?.uid]);
 
-  // Server-side validation functions (for sensitive operations)
-  const validateSubscriptionServer = useCallback(async () => {
+  // Restore previous purchases
+  const restorePurchases = useCallback(async () => {
+    setPurchaseLoading(true);
     try {
-      const validateFn = functions().httpsCallable('validateSubscription');
-      const result = await validateFn({});
-      if (result.data.success) {
-        // Update local state if server says different tier
-        if (result.data.tier !== subscription.tier) {
-          setSubscription((prev) => ({
-            ...prev,
-            tier: result.data.tier,
-            source: 'server',
-          }));
+      const result = await restorePurchasesService();
+      if (result.success) {
+        setPurchases({
+          ownedPacks: result.ownedPacks,
+          hasPremiumLifetime: result.hasPremiumLifetime,
+        });
+
+        // Sync to Firestore
+        if (user?.uid) {
+          await updatePurchases(user.uid, result.ownedPacks, result.hasPremiumLifetime);
         }
-        return result.data;
-      }
-      return { success: false };
-    } catch (error) {
-      console.log('[Subscription] Server validation failed:', error);
-      // Fall back to local state
-      return { success: true, tier: subscription.tier };
-    }
-  }, [subscription.tier]);
 
-  const validateRecommendationLimitServer = useCallback(async (increment = false) => {
-    try {
-      const validateFn = functions().httpsCallable('validateRecommendationLimit');
-      const result = await validateFn({ increment });
-      if (result.data.success) {
-        // Update local usage state
-        setUsage((prev) => ({
-          ...prev,
-          recommendations: {
-            allowed: result.data.allowed,
-            used: result.data.used,
-            limit: result.data.limit,
-            remaining: result.data.remaining,
-          },
-        }));
-        return result.data;
+        // Refresh usage
+        const recommendationCheck = await canGetRecommendations(result.hasPremiumLifetime);
+        setUsage((prev) => ({ ...prev, recommendations: recommendationCheck }));
       }
-      return { success: false, allowed: false };
+      setPurchaseLoading(false);
+      return result;
     } catch (error) {
-      console.log('[Subscription] Server recommendation limit check failed:', error);
-      // Fall back to local check
-      const localCheck = await canGetRecommendations(subscription.tier);
-      return { success: true, ...localCheck };
-    }
-  }, [subscription.tier]);
-
-  const validateKidLimitServer = useCallback(async (action = 'check') => {
-    try {
-      const validateFn = functions().httpsCallable('validateKidLimit');
-      const result = await validateFn({ action });
-      return result.data;
-    } catch (error) {
-      console.log('[Subscription] Server kid limit check failed:', error);
-      // Fall back to local check (caller should handle this)
+      setPurchaseLoading(false);
       return { success: false, error: error.message };
     }
-  }, []);
+  }, [user?.uid]);
 
   const value = {
-    // Subscription state
-    subscription,
-    tier: subscription.tier,
-    effectiveTier, // The tier used for feature access (plus during trial)
-    tierConfig,
-    isPremium: effectiveTier !== 'free', // Premium if paid OR in trial
-    isInTrial: subscription.isInTrial || false,
-    daysRemaining: subscription.daysRemaining || 0,
-    trialExpired: subscription.trialExpired || false,
-    trialEndDate: subscription.trialEndDate,
+    // Purchase state
+    purchases,
+    ownedPacks,
+    hasPremiumLifetime,
+    isPremium,
     loading,
     purchaseLoading,
     usage,
     offerings,
 
+    // Tier info (for backwards compatibility)
+    tier,
+    tierConfig,
+    effectiveTier: tier,
+
+    // Pack info
+    activityPacks: ACTIVITY_PACKS,
+    premiumLifetime: PREMIUM_LIFETIME,
+    allPacks: getAllPacks(),
+    allTiers: TIERS,
+
     // Feature checks
+    hasPackAccess: hasPackAccessFn,
+    isActivityUnlocked: isActivityUnlockedFn,
     checkFeature,
-    hasFeature: checkFeature, // Alias for convenience
+    hasFeature: checkFeature, // Alias
     checkCanAddKid,
     checkCanGetRecommendations,
-    checkCategory,
+    getPackForActivity,
 
     // Actions
     recordRecommendationUsage,
     getSuggestion,
-    purchase,
+    purchasePack,
+    purchaseLifetime,
     restorePurchases,
 
-    // Server-side validation (for sensitive operations)
-    validateSubscriptionServer,
-    validateRecommendationLimitServer,
-    validateKidLimitServer,
-
-    // Tier info
-    allTiers: SUBSCRIPTION_TIERS,
+    // Legacy aliases (for backwards compatibility)
+    subscription: { tier, ownedPacks, hasPremiumLifetime },
+    isInTrial: false,
+    daysRemaining: 0,
+    trialExpired: true,
   };
 
   return (

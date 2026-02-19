@@ -18,7 +18,9 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Linking,
 } from 'react-native';
+import Constants from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
@@ -44,6 +46,13 @@ const ProfileScreen = () => {
   const { subscription, usage } = useSubscription();
   const insets = useSafeAreaInsets();
   const [actionLoading, setActionLoading] = useState(null);
+
+  // Get URLs from app config
+  const privacyPolicyUrl = Constants.expoConfig?.extra?.privacyPolicyUrl || 'https://watchlightinteractive.com/playcompass-privacy-policy';
+  const termsOfServiceUrl = Constants.expoConfig?.extra?.termsOfServiceUrl || 'https://watchlightinteractive.com/playcompass-terms-of-service';
+
+  const openPrivacyPolicy = () => Linking.openURL(privacyPolicyUrl);
+  const openTermsOfService = () => Linking.openURL(termsOfServiceUrl);
 
   const handleLinkGoogle = async () => {
     // Capture anonymous state before sign-in (it will change after linking)
@@ -274,6 +283,38 @@ const ProfileScreen = () => {
     </View>
   );
 
+  const renderLegalSection = () => (
+    <View style={[styles.section, { backgroundColor: colors.surface.primary }]}>
+      <Text style={[styles.sectionTitle, { color: colors.text.secondary }]}>LEGAL</Text>
+
+      {/* Privacy Policy */}
+      <TouchableOpacity
+        style={[styles.settingRow, { borderBottomColor: colors.border.light }]}
+        onPress={openPrivacyPolicy}
+      >
+        <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+          Privacy Policy
+        </Text>
+        <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
+          ↗
+        </Text>
+      </TouchableOpacity>
+
+      {/* Terms of Service */}
+      <TouchableOpacity
+        style={[styles.settingRow, { borderBottomColor: 'transparent' }]}
+        onPress={openTermsOfService}
+      >
+        <Text style={[styles.settingLabel, { color: colors.text.primary }]}>
+          Terms of Service
+        </Text>
+        <Text style={[styles.settingValue, { color: colors.text.secondary }]}>
+          ↗
+        </Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   const renderActionsSection = () => (
     <View style={[styles.section, { backgroundColor: colors.surface.primary }]}>
       <Text style={[styles.sectionTitle, { color: colors.text.secondary }]}>ACTIONS</Text>
@@ -329,11 +370,12 @@ const ProfileScreen = () => {
         {renderStatsSection()}
         {renderMyStuffSection()}
         {renderSettingsSection()}
+        {renderLegalSection()}
         {renderActionsSection()}
 
         {/* App Version */}
         <Text style={[styles.version, { color: colors.text.tertiary }]}>
-          PlayCompass v1.0.0
+          PlayCompass v{Constants.expoConfig?.version || '1.0.0'}
         </Text>
       </ScrollView>
     </ScreenWrapper>

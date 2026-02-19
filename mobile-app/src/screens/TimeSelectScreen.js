@@ -45,6 +45,11 @@ const TimeSelectScreen = () => {
   const [selectedKidIds, setSelectedKidIds] = useState(() => kids.map((k) => k.id));
   const [recommendationsAllowed, setRecommendationsAllowed] = useState(true);
 
+  // Sync selectedKidIds when kids array changes (e.g., new kid added)
+  useEffect(() => {
+    setSelectedKidIds(kids.map((k) => k.id));
+  }, [kids]);
+
   // Weather and seasonal states
   const [weather, setWeather] = useState(null);
   const [weatherLoading, setWeatherLoading] = useState(true);

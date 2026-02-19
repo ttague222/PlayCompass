@@ -193,7 +193,7 @@ const FavoritesScreen = () => {
             description="Tap the heart icon on activities you love to save them here for quick access."
           />
           <Button
-            onPress={() => navigation.navigate('TimeSelect')}
+            onPress={() => navigation.navigate('KidsSelectStep')}
             variant="primary"
             style={styles.emptyButton}
           >

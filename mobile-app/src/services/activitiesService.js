@@ -372,18 +372,26 @@ const seededShuffle = (array, random) => {
  * Get recommended activities for kids
  * Combines age filtering, interest matching, popularity, and preference boosts
  * Includes session-based randomization for variety between sessions
+ *
+ * IMPORTANT: Returns a mix of free and premium activities to ensure free users
+ * always get value while also seeing premium activities as "teasers".
+ * Target mix: ~80% free activities, ~20% premium (locked) activities
+ *
+ * With 124+ free activities in the pool, users have plenty of variety for
+ * sustained daily engagement while locked activities drive upgrade consideration.
+ *
  * @param {Array<{age: number, interests: string[]}>} kids - Array of kids
  * @param {Object} [options] - Additional options
- * @param {number} [options.count=5] - Number of recommendations
+ * @param {number} [options.count=10] - Number of recommendations
  * @param {string} [options.location] - Location preference
  * @param {number} [options.availableTime] - Time available in minutes
  * @param {string} [options.energy] - Energy level preference
  * @param {string} [options.materials] - Materials filter (none, basic, or null for any)
  * @param {Object} [options.categoryBoosts] - Category preference boosts from learning
- * @returns {Activity[]} Recommended activities
+ * @returns {Activity[]} Recommended activities (mixed free and premium)
  */
 export const getRecommendedActivities = (kids, options = {}) => {
-  const { count = 5, location, availableTime, energy, materials, categoryBoosts = {} } = options;
+  const { count = 10, location, availableTime, energy, materials, categoryBoosts = {} } = options;
 
   // Get combined age groups and interests from all kids
   const ageGroups = getAgeGroupsFromKids(kids);
@@ -422,23 +430,52 @@ export const getRecommendedActivities = (kids, options = {}) => {
     };
   });
 
-  // Group activities into relevance tiers (high/medium/low)
-  // This ensures variety while still prioritizing more relevant activities
-  const maxScore = Math.max(...scoredActivities.map(a => a.relevanceScore), 1);
-  const highTier = scoredActivities.filter(a => a.relevanceScore >= maxScore * 0.7);
-  const mediumTier = scoredActivities.filter(a => a.relevanceScore >= maxScore * 0.4 && a.relevanceScore < maxScore * 0.7);
-  const lowTier = scoredActivities.filter(a => a.relevanceScore < maxScore * 0.4);
+  // Separate free and premium activities
+  const freeActivities = scoredActivities.filter(a => a.isFree === true);
+  const premiumActivities = scoredActivities.filter(a => a.isFree !== true);
 
-  // Shuffle within each tier for variety between sessions
-  const shuffledHigh = seededShuffle(highTier, random);
-  const shuffledMedium = seededShuffle(mediumTier, random);
-  const shuffledLow = seededShuffle(lowTier, random);
+  // Sort each group by relevance score (highest first)
+  const sortByScore = (a, b) => b.relevanceScore - a.relevanceScore;
+  freeActivities.sort(sortByScore);
+  premiumActivities.sort(sortByScore);
 
-  // Combine tiers (high-relevance activities first, then medium, then low)
-  const combined = [...shuffledHigh, ...shuffledMedium, ...shuffledLow];
+  // Shuffle within top tier of each group for variety
+  // With 124 free activities, we can show more variety from the free pool
+  const shuffledFree = seededShuffle(freeActivities.slice(0, Math.min(30, freeActivities.length)), random);
+  const shuffledPremium = seededShuffle(premiumActivities.slice(0, Math.min(10, premiumActivities.length)), random);
 
-  // Return top N
-  return combined.slice(0, count);
+  // Calculate target counts: ~80% free, ~20% premium (teasers)
+  // This ensures free users get lots of value while still seeing premium as upgrade opportunities
+  const targetFreeCount = Math.max(Math.ceil(count * 0.8), Math.min(count - 1, shuffledFree.length));
+  const targetPremiumCount = Math.min(count - targetFreeCount, shuffledPremium.length);
+
+  // Select activities
+  const selectedFree = shuffledFree.slice(0, targetFreeCount);
+  const selectedPremium = shuffledPremium.slice(0, targetPremiumCount);
+
+  // Combine and interleave: alternate free, free, premium pattern
+  const combined = [];
+  let freeIdx = 0;
+  let premiumIdx = 0;
+
+  while (combined.length < count && (freeIdx < selectedFree.length || premiumIdx < selectedPremium.length)) {
+    // Add 2 free activities
+    if (freeIdx < selectedFree.length) {
+      combined.push(selectedFree[freeIdx++]);
+    }
+    if (freeIdx < selectedFree.length && combined.length < count) {
+      combined.push(selectedFree[freeIdx++]);
+    }
+    // Add 1 premium activity
+    if (premiumIdx < selectedPremium.length && combined.length < count) {
+      combined.push(selectedPremium[premiumIdx++]);
+    }
+  }
+
+  // Final shuffle to make the pattern less predictable
+  const finalResult = seededShuffle(combined, random);
+
+  return finalResult.slice(0, count);
 };
 
 /**
@@ -448,10 +485,28 @@ export const getRecommendedActivities = (kids, options = {}) => {
 export const getAllActivities = () => activities;
 
 /**
+ * Get only free activities
+ * @returns {Activity[]} Free activities
+ */
+export const getFreeActivities = () => activities.filter(a => a.isFree === true);
+
+/**
+ * Get only premium (non-free) activities
+ * @returns {Activity[]} Premium activities
+ */
+export const getPremiumActivities = () => activities.filter(a => a.isFree !== true);
+
+/**
  * Get activity count
  * @returns {number} Total number of activities
  */
 export const getActivityCount = () => activities.length;
+
+/**
+ * Get free activity count
+ * @returns {number} Number of free activities
+ */
+export const getFreeActivityCount = () => activities.filter(a => a.isFree === true).length;
 
 export default {
   getAgeGroupFromAge,
@@ -474,5 +529,8 @@ export default {
   filterActivities,
   getRecommendedActivities,
   getAllActivities,
+  getFreeActivities,
+  getPremiumActivities,
   getActivityCount,
+  getFreeActivityCount,
 };

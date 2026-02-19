@@ -2,7 +2,7 @@
   "expo": {
     "name": "PlayCompass",
     "slug": "playcompass",
-    "version": "1.0.0",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -16,7 +16,11 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.playcompass.app",
-      "googleServicesFile": "./GoogleService-Info.plist"
+      "googleServicesFile": "./GoogleService-Info.plist",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": ["remote-notification"]
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -26,7 +30,11 @@
       "edgeToEdgeEnabled": true,
       "package": "com.playcompass.app",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 1
+      "versionCode": 4,
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -53,7 +61,9 @@
     "extra": {
       "eas": {
         "projectId": "490b745a-1b50-4a94-8dee-76ae700fdc38"
-      }
+      },
+      "privacyPolicyUrl": "https://watchlightinteractive.com/playcompass-privacy-policy",
+      "termsOfServiceUrl": "https://watchlightinteractive.com/playcompass-terms-of-service"
     },
     "updates": {
       "url": "https://u.expo.dev/490b745a-1b50-4a94-8dee-76ae700fdc38"

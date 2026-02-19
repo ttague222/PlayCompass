@@ -19,10 +19,11 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useFavorites } from '../context/FavoritesContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { Card, Button, IconButton, Badge, ScreenWrapper, StarRating, RatingModal } from '../components';
+import { Card, Button, IconButton, Badge, ScreenWrapper, StarRating, RatingModal, Paywall } from '../components';
 import { CATEGORIES, DURATIONS, ENERGY_LEVELS, MATERIALS, AGE_GROUPS } from '../data/activitySchema';
 import { isFeatureAvailable } from '../services/subscriptionService';
 import { shareActivityKitPDF, printActivityKit } from '../services/printService';
+import { getPackForActivity, getPackInfo } from '../data/activityPacks';
 
 const ActivityDetailScreen = () => {
   const navigation = useNavigation();
@@ -30,15 +31,22 @@ const ActivityDetailScreen = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, getActivityRating, saveRating } = useFavorites();
-  const { effectiveTier, isInTrial } = useSubscription();
+  const { effectiveTier, isInTrial, isActivityUnlocked, hasPremiumLifetime, ownedPacks } = useSubscription();
 
   const { activity } = route.params || {};
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [favorited, setFavorited] = useState(activity ? isFavorite(activity.id) : false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [shareSuccess, setShareSuccess] = useState(false);
+  const [paywallVisible, setPaywallVisible] = useState(false);
+
+  // Check if activity is unlocked (user owns pack or has premium lifetime)
+  const activityUnlocked = activity ? isActivityUnlocked(activity) : true;
+  const packId = activity ? getPackForActivity(activity) : null;
+  const packInfo = packId ? getPackInfo(packId) : null;
 
   // Check if user has premium access for detailed instructions (uses effectiveTier for trial support)
-  const hasDetailedInstructions = isFeatureAvailable('detailedInstructions', effectiveTier);
+  const hasDetailedInstructions = isFeatureAvailable('detailedInstructions', effectiveTier) || hasPremiumLifetime;
 
   if (!activity) {
     return null;
@@ -52,7 +60,15 @@ const ActivityDetailScreen = () => {
   const currentRating = getActivityRating(activity.id);
 
   const handleUpgrade = () => {
-    navigation.navigate('Subscription');
+    navigation.navigate('Store');
+  };
+
+  const handleShowPaywall = () => {
+    setPaywallVisible(true);
+  };
+
+  const handlePaywallClose = () => {
+    setPaywallVisible(false);
   };
 
   const handleBack = () => {
@@ -106,7 +122,10 @@ const ActivityDetailScreen = () => {
       };
 
       const result = await shareActivityKitPDF(activityForPrint);
-      if (!result.success) {
+      if (result.success) {
+        setShareSuccess(true);
+        setTimeout(() => setShareSuccess(false), 2000);
+      } else {
         Alert.alert('Unable to Share', result.error || 'Could not generate the activity kit. Please try again.');
       }
     } catch (error) {
@@ -134,8 +153,8 @@ const ActivityDetailScreen = () => {
           variant="ghost"
           size="md"
         />
-        <Text style={[styles.headerTitle, { color: colors.text.primary }]}>
-          Activity Details
+        <Text style={[styles.headerTitle, { color: colors.text.primary }]} numberOfLines={1}>
+          {activity.title}
         </Text>
         <TouchableOpacity
           onPress={handleToggleFavorite}
@@ -155,6 +174,25 @@ const ActivityDetailScreen = () => {
       >
           {/* Hero */}
           <View style={styles.hero}>
+            {/* Lock badge for locked activities */}
+            {!activityUnlocked && (
+              <TouchableOpacity
+                onPress={handleShowPaywall}
+                style={[styles.lockBanner, { backgroundColor: colors.warning.light }]}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.lockBannerIcon}>🔒</Text>
+                <View style={styles.lockBannerText}>
+                  <Text style={[styles.lockBannerTitle, { color: colors.warning.dark }]}>
+                    {packInfo ? `${packInfo.emoji} ${packInfo.name}` : 'Premium Activity'}
+                  </Text>
+                  <Text style={[styles.lockBannerSubtitle, { color: colors.warning.dark }]}>
+                    Tap to unlock this activity
+                  </Text>
+                </View>
+                <Text style={[styles.lockBannerArrow, { color: colors.warning.dark }]}>›</Text>
+              </TouchableOpacity>
+            )}
             <Text style={styles.heroEmoji}>{activity.emoji}</Text>
             <Text style={[styles.heroTitle, { color: colors.text.primary }]}>
               {activity.title}
@@ -228,6 +266,16 @@ const ActivityDetailScreen = () => {
               </Text>
             </View>
           </View>
+
+          {/* Supervision Warning - Moved here for visibility */}
+          {activity.adultSupervision && (
+            <View style={[styles.warningBox, { backgroundColor: colors.warning.light + '40', borderWidth: 1, borderColor: colors.warning.main }]}>
+              <Text style={styles.warningIcon}>⚠️</Text>
+              <Text style={[styles.warningText, { color: colors.warning.dark }]}>
+                Adult supervision recommended for this activity
+              </Text>
+            </View>
+          )}
 
           {/* Materials */}
           {activity.materials !== 'none' && (
@@ -320,16 +368,6 @@ const ActivityDetailScreen = () => {
                 <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
                   Pro Tips
                 </Text>
-                {!hasDetailedInstructions && (
-                  <Badge variant="premium" size="sm">
-                    <Text style={styles.premiumBadgeText}>Premium</Text>
-                  </Badge>
-                )}
-                {hasDetailedInstructions && isInTrial && (
-                  <Badge variant="secondary" size="sm" style={{ backgroundColor: colors.primary.main + '15' }}>
-                    <Text style={{ color: colors.primary.main, fontSize: 10, fontWeight: '600' }}>✨ Bonus Feature</Text>
-                  </Badge>
-                )}
               </View>
               {hasDetailedInstructions ? (
                 activity.tips.map((tip, index) => (
@@ -363,16 +401,6 @@ const ActivityDetailScreen = () => {
                 <Text style={[styles.sectionTitle, { color: colors.text.primary }]}>
                   Variations to Try
                 </Text>
-                {!hasDetailedInstructions && (
-                  <Badge variant="premium" size="sm">
-                    <Text style={styles.premiumBadgeText}>Premium</Text>
-                  </Badge>
-                )}
-                {hasDetailedInstructions && isInTrial && (
-                  <Badge variant="secondary" size="sm" style={{ backgroundColor: colors.primary.main + '15' }}>
-                    <Text style={{ color: colors.primary.main, fontSize: 10, fontWeight: '600' }}>✨ Bonus Feature</Text>
-                  </Badge>
-                )}
               </View>
               {hasDetailedInstructions ? (
                 activity.variations.map((variation, index) => (
@@ -399,34 +427,6 @@ const ActivityDetailScreen = () => {
             </Card>
           )}
 
-          {/* Tags */}
-          {activity.tags && activity.tags.length > 0 && (
-            <View style={styles.tagsSection}>
-              <Text style={[styles.tagsLabel, { color: colors.text.tertiary }]}>Tags:</Text>
-              <View style={styles.tagsRow}>
-                {activity.tags.map((tag, index) => (
-                  <View
-                    key={index}
-                    style={[styles.tag, { backgroundColor: colors.surface.secondary }]}
-                  >
-                    <Text style={[styles.tagText, { color: colors.text.secondary }]}>
-                      #{tag}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
-
-          {/* Supervision Warning */}
-          {activity.adultSupervision && (
-            <View style={[styles.warningBox, { backgroundColor: colors.warning.light + '40', borderWidth: 1, borderColor: colors.warning.main }]}>
-              <Text style={styles.warningIcon}>⚠️</Text>
-              <Text style={[styles.warningText, { color: colors.warning.dark }]}>
-                Adult supervision recommended for this activity
-              </Text>
-            </View>
-          )}
         </ScrollView>
 
       {/* Bottom CTA */}
@@ -446,17 +446,17 @@ const ActivityDetailScreen = () => {
             variant="outline"
             size="sm"
             style={styles.smallButton}
-            disabled={isPrinting}
+            disabled={isPrinting || shareSuccess}
           >
-            {isPrinting ? <ActivityIndicator size="small" color={colors.primary.main} /> : '\ud83d\udcf2 Share'}
+            {isPrinting ? <ActivityIndicator size="small" color={colors.primary.main} /> : shareSuccess ? '✓ Shared!' : '📲 Share'}
           </Button>
           <Button
             onPress={handleFinishAndGoHome}
             size="sm"
             style={styles.doneButton}
-            icon={'\ud83c\udfaf'}
+            icon={'✓'}
           >
-            Do It!
+            Done!
           </Button>
         </View>
       </View>
@@ -468,6 +468,13 @@ const ActivityDetailScreen = () => {
         onSubmit={handleSaveRating}
         activity={activity}
         initialRating={currentRating}
+      />
+
+      {/* Paywall Modal for locked activities */}
+      <Paywall
+        visible={paywallVisible}
+        onClose={handlePaywallClose}
+        activity={activity}
       />
     </ScreenWrapper>
   );
@@ -488,8 +495,11 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
+    flex: 1,
+    textAlign: 'center',
+    marginHorizontal: 8,
   },
   favoriteButton: {
     width: 44,
@@ -513,7 +523,7 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   heroEmoji: {
-    fontSize: 80,
+    fontSize: 64,
     marginBottom: 12,
   },
   heroTitle: {
@@ -533,7 +543,7 @@ const styles = StyleSheet.create({
   description: {
     fontSize: 16,
     lineHeight: 26,
-    textAlign: 'center',
+    textAlign: 'left',
   },
   ratingCard: {
     padding: 16,
@@ -580,10 +590,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   infoLabel: {
-    fontSize: 10,
-    fontWeight: '500',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
+    fontSize: 12,
+    fontWeight: '600',
     marginBottom: 4,
   },
   infoValue: {
@@ -720,30 +728,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     flex: 1,
   },
-  tagsSection: {
-    marginBottom: 20,
-    alignItems: 'center',
-  },
-  tagsLabel: {
-    fontSize: 12,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  tag: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-  },
-  tagText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
   warningBox: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -778,6 +762,35 @@ const styles = StyleSheet.create({
   },
   doneButton: {
     flex: 1.5,
+  },
+  lockBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 12,
+    marginBottom: 16,
+    width: '100%',
+  },
+  lockBannerIcon: {
+    fontSize: 24,
+    marginRight: 12,
+  },
+  lockBannerText: {
+    flex: 1,
+  },
+  lockBannerTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    marginBottom: 2,
+  },
+  lockBannerSubtitle: {
+    fontSize: 12,
+    opacity: 0.8,
+  },
+  lockBannerArrow: {
+    fontSize: 24,
+    fontWeight: '300',
   },
 });
 

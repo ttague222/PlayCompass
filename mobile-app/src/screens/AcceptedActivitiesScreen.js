@@ -11,13 +11,11 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
 import { useScheduler } from '../context/SchedulerContext';
-import { useSubscription } from '../context/SubscriptionContext';
 import { Card, Button, IconButton, Badge, ScreenWrapper, ScheduleActivityModal } from '../components';
 import { CATEGORIES, DURATIONS } from '../data/activitySchema';
 
@@ -27,7 +25,6 @@ const AcceptedActivitiesScreen = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { schedules } = useScheduler();
-  const { checkFeature } = useSubscription();
 
   const { activities = [] } = route.params || {};
 
@@ -35,8 +32,6 @@ const AcceptedActivitiesScreen = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [activityToSchedule, setActivityToSchedule] = useState(null);
   const [scheduledActivities, setScheduledActivities] = useState({});
-
-  const hasSchedulingAccess = checkFeature('scheduling');
 
   const handleBack = () => {
     navigation.goBack();
@@ -55,17 +50,6 @@ const AcceptedActivitiesScreen = () => {
   };
 
   const handleSchedulePress = (activity) => {
-    if (!hasSchedulingAccess) {
-      Alert.alert(
-        'Premium Feature',
-        'Upgrade to Premium to schedule activities and get reminders.',
-        [
-          { text: 'Not Now', style: 'cancel' },
-          { text: 'Upgrade', onPress: () => navigation.navigate('Subscription') },
-        ]
-      );
-      return;
-    }
     setActivityToSchedule(activity);
     setShowScheduleModal(true);
   };

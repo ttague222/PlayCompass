@@ -160,6 +160,27 @@ exports.deleteUserData = user().onDelete(async (userRecord) => {
       console.warn('Error deleting activity_history subcollection:', subError);
     }
 
+    // 1b. Delete push_tokens subcollection
+    try {
+      const pushTokensSnapshot = await db
+        .collection('users')
+        .doc(userId)
+        .collection('push_tokens')
+        .get();
+
+      if (!pushTokensSnapshot.empty) {
+        const batch = db.batch();
+        pushTokensSnapshot.forEach((doc) => {
+          batch.delete(doc.ref);
+        });
+        await batch.commit();
+        deletedCount += pushTokensSnapshot.size;
+        console.log(`Deleted ${pushTokensSnapshot.size} push_tokens documents`);
+      }
+    } catch (subError) {
+      console.warn('Error deleting push_tokens subcollection:', subError);
+    }
+
     // 2. Delete user document
     const userRef = db.collection('users').doc(userId);
     const userDoc = await userRef.get();
@@ -660,7 +681,141 @@ exports.syncRevenueCatSubscription = onCall(async (request) => {
 });
 
 // ============================================
-// 10. Cleanup Old Daily Usage Records
+// 10. Send Push Notification to User
+// Sends push notification via Expo Push Notification service
+// ============================================
+exports.sendPushNotification = onCall(async (request) => {
+  // Only allow authenticated users or admin
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { userId, title, body, data } = request.data || {};
+
+  if (!userId || !title || !body) {
+    throw new HttpsError('invalid-argument', 'userId, title, and body are required');
+  }
+
+  try {
+    // Get user's push tokens
+    const tokensSnapshot = await db
+      .collection('users')
+      .doc(userId)
+      .collection('push_tokens')
+      .where('isActive', '==', true)
+      .get();
+
+    if (tokensSnapshot.empty) {
+      return { success: false, error: 'No active push tokens found' };
+    }
+
+    const tokens = tokensSnapshot.docs.map((doc) => doc.data().token);
+
+    // Create messages for Expo Push Notification service
+    const messages = tokens.map((token) => ({
+      to: token,
+      sound: 'default',
+      title,
+      body,
+      data: data || {},
+    }));
+
+    // Send to Expo Push Notification service
+    const response = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Accept-encoding': 'gzip, deflate',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(messages),
+    });
+
+    const result = await response.json();
+    console.log(`Push notification sent to ${tokens.length} devices for user ${userId}`);
+
+    return { success: true, sent: tokens.length, result };
+  } catch (error) {
+    console.error('Error sending push notification:', error);
+    throw new HttpsError('internal', 'Error sending push notification');
+  }
+});
+
+// ============================================
+// 11. Send Daily Activity Reminder
+// Scheduled function to send daily reminders to users with scheduled activities
+// ============================================
+exports.sendDailyReminders = onSchedule('every day 08:00', async (event) => {
+  console.log('Running daily activity reminders...');
+
+  try {
+    // Get all users with active push tokens
+    const usersSnapshot = await db.collection('users').get();
+    let sentCount = 0;
+
+    for (const userDoc of usersSnapshot.docs) {
+      const userId = userDoc.id;
+
+      // Check if user has active push tokens
+      const tokensSnapshot = await db
+        .collection('users')
+        .doc(userId)
+        .collection('push_tokens')
+        .where('isActive', '==', true)
+        .limit(1)
+        .get();
+
+      if (tokensSnapshot.empty) continue;
+
+      // For now, send a generic morning reminder
+      // In the future, this could check for scheduled activities
+      const tokens = [];
+      const allTokensSnapshot = await db
+        .collection('users')
+        .doc(userId)
+        .collection('push_tokens')
+        .where('isActive', '==', true)
+        .get();
+
+      allTokensSnapshot.forEach((doc) => tokens.push(doc.data().token));
+
+      if (tokens.length === 0) continue;
+
+      // Send morning reminder
+      const messages = tokens.map((token) => ({
+        to: token,
+        sound: 'default',
+        title: 'Good Morning! 🌞',
+        body: 'Ready for today\'s activities? Tap to find something fun for the kids!',
+        data: { type: 'daily_reminder' },
+      }));
+
+      try {
+        await fetch('https://exp.host/--/api/v2/push/send', {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Accept-encoding': 'gzip, deflate',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(messages),
+        });
+        sentCount++;
+      } catch (sendError) {
+        console.warn(`Failed to send reminder to user ${userId}:`, sendError);
+      }
+    }
+
+    console.log(`Sent daily reminders to ${sentCount} users`);
+    return { success: true, sent: sentCount };
+  } catch (error) {
+    console.error('Error sending daily reminders:', error);
+    throw error;
+  }
+});
+
+// ============================================
+// 12. Cleanup Old Daily Usage Records
 // Runs daily, deletes usage records older than 30 days
 // ============================================
 exports.cleanupDailyUsage = onSchedule('every 24 hours', async (event) => {

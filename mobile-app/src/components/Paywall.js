@@ -1,7 +1,8 @@
 /**
  * PlayCompass Paywall Component
  *
- * Modal for upgrading subscription
+ * Modal for upselling activity packs or premium lifetime when user
+ * tries to access a locked activity OR reaches their daily recommendation limit.
  */
 
 import React, { useState } from 'react';
@@ -11,180 +12,416 @@ import {
   StyleSheet,
   Modal,
   TouchableOpacity,
-  ScrollView,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../context/ThemeContext';
-import { SUBSCRIPTION_TIERS, FEATURE_DESCRIPTIONS } from '../services/subscriptionService';
+import { useSubscription } from '../context/SubscriptionContext';
+import { ACTIVITY_PACKS, PREMIUM_LIFETIME, getPackForActivity } from '../data/activityPacks';
 import Button from './ui/Button';
 import Card from './ui/Card';
 
-const Paywall = ({ visible, onClose, blockedFeature, suggestedTier }) => {
+const Paywall = ({ visible, onClose, activity, requiredPackId, blockedFeature }) => {
   const { colors } = useTheme();
-  const [selectedTier, setSelectedTier] = useState(suggestedTier?.id || 'plus');
-  const [processing, setProcessing] = useState(false);
+  const navigation = useNavigation();
+  const {
+    purchasePack,
+    purchaseLifetime,
+    purchaseLoading,
+  } = useSubscription();
+  const [selectedOption, setSelectedOption] = useState('pack'); // 'pack' or 'lifetime'
 
-  const tiers = Object.values(SUBSCRIPTION_TIERS).filter((t) => t.id !== 'free');
+  // Check if this is a feature block (daily limit or scheduling)
+  const isDailyLimitBlock = blockedFeature === 'dailyRecommendations';
+  const isSchedulingBlock = blockedFeature === 'scheduling';
+  const isFeatureBlock = isDailyLimitBlock || isSchedulingBlock;
 
-  const handlePurchase = async () => {
-    setProcessing(true);
-    // In a real app, this would integrate with RevenueCat or in-app purchases
-    Alert.alert(
-      'Coming Soon',
-      'In-app purchases will be available in the next update. For now, enjoy all features for free during our beta period!',
-      [{ text: 'OK', onPress: () => onClose() }]
-    );
-    setProcessing(false);
-  };
+  // Get the pack info (only for activity locks)
+  const packId = requiredPackId || (activity ? getPackForActivity(activity) : null);
+  const pack = packId ? ACTIVITY_PACKS[packId] : null;
 
-  const renderFeatureComparison = () => {
-    const features = Object.keys(FEATURE_DESCRIPTIONS);
+  // Return null only if it's NOT a feature block AND no pack found
+  if (!isFeatureBlock && !pack) {
+    return null;
+  }
 
-    return features.map((feature) => {
-      const info = FEATURE_DESCRIPTIONS[feature];
-      const freeValue = SUBSCRIPTION_TIERS.free.features[feature];
-      const selectedValue = SUBSCRIPTION_TIERS[selectedTier]?.features[feature];
+  const handlePurchasePack = async () => {
+    const result = await purchasePack(packId);
 
-      // Format the value for display
-      const formatValue = (val) => {
-        if (val === true) return '✓';
-        if (val === false) return '—';
-        if (val === 'unlimited') return '∞';
-        if (val === 'all') return 'All';
-        if (Array.isArray(val)) return val.length;
-        return val;
-      };
-
-      const isImproved = formatValue(selectedValue) !== formatValue(freeValue);
-
-      return (
-        <View key={feature} style={styles.featureRow}>
-          <View style={styles.featureInfo}>
-            <Text style={styles.featureIcon}>{info.icon}</Text>
-            <Text style={[styles.featureName, { color: colors.text.primary }]}>{info.name}</Text>
-          </View>
-          <View style={styles.featureValues}>
-            <Text style={[styles.featureValue, { color: colors.text.tertiary }]}>
-              {formatValue(freeValue)}
-            </Text>
-            <Text style={styles.arrow}>→</Text>
-            <Text
-              style={[
-                styles.featureValue,
-                styles.improvedValue,
-                { color: isImproved ? colors.primary.main : colors.text.secondary },
-              ]}
-            >
-              {formatValue(selectedValue)}
-            </Text>
-          </View>
-        </View>
+    if (result.success) {
+      Alert.alert(
+        'Pack Unlocked!',
+        `You now have access to all ${pack.name} activities!`,
+        [{ text: 'Great!', onPress: onClose }]
       );
-    });
+    } else if (result.cancelled) {
+      // User cancelled
+    } else if (result.error) {
+      Alert.alert('Purchase Failed', result.error, [{ text: 'OK' }]);
+    }
   };
+
+  const handlePurchaseLifetime = async () => {
+    const result = await purchaseLifetime();
+
+    if (result.success) {
+      Alert.alert(
+        'Premium Unlocked!',
+        'You now have lifetime access to all packs and features!',
+        [{ text: 'Awesome!', onPress: onClose }]
+      );
+    } else if (result.cancelled) {
+      // User cancelled
+    } else if (result.error) {
+      Alert.alert('Purchase Failed', result.error, [{ text: 'OK' }]);
+    }
+  };
+
+  const handleGoToStore = () => {
+    onClose();
+    navigation.navigate('Store');
+  };
+
+  // Render Daily Limit UI
+  const renderDailyLimitContent = () => (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      {/* Close button */}
+      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+        <Text style={[styles.closeText, { color: colors.text.secondary }]}>✕</Text>
+      </TouchableOpacity>
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.lockIcon}>⏰</Text>
+        <Text style={[styles.title, { color: colors.text.primary }]}>
+          Daily Limit Reached
+        </Text>
+        <Text style={[styles.activityName, { color: colors.text.secondary }]}>
+          You've used your 3 free recommendations for today
+        </Text>
+      </View>
+
+      {/* Premium Lifetime Option */}
+      <View style={styles.options}>
+        <View
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: colors.primary.light,
+              borderColor: colors.primary.main,
+            },
+          ]}
+        >
+          {/* Best Value badge */}
+          <View style={[styles.bestValueBadge, { backgroundColor: colors.secondary.main }]}>
+            <Text style={styles.bestValueText}>BEST VALUE</Text>
+          </View>
+
+          <View style={styles.optionHeader}>
+            <View style={[styles.optionIconContainer, { backgroundColor: colors.primary.main + '30' }]}>
+              <Text style={styles.optionEmoji}>{PREMIUM_LIFETIME.emoji}</Text>
+            </View>
+            <View style={styles.optionInfo}>
+              <Text style={[styles.optionName, { color: colors.text.primary }]}>
+                {PREMIUM_LIFETIME.name}
+              </Text>
+              <Text style={[styles.optionDescription, { color: colors.text.secondary }]}>
+                Unlimited recommendations forever
+              </Text>
+            </View>
+          </View>
+
+          {/* Feature list */}
+          <View style={styles.featureList}>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>✓</Text>
+              <Text style={[styles.featureText, { color: colors.text.primary }]}>
+                Unlimited daily recommendations
+              </Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>✓</Text>
+              <Text style={[styles.featureText, { color: colors.text.primary }]}>
+                All activity packs included
+              </Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>✓</Text>
+              <Text style={[styles.featureText, { color: colors.text.primary }]}>
+                Weather-aware & seasonal activities
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[styles.optionPrice, { color: colors.primary.main }]}>
+            {PREMIUM_LIFETIME.priceLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.footer}>
+        <Button
+          onPress={handlePurchaseLifetime}
+          variant="primary"
+          fullWidth
+          size="lg"
+          loading={purchaseLoading}
+          disabled={purchaseLoading}
+        >
+          Get Unlimited - {PREMIUM_LIFETIME.priceLabel}
+        </Button>
+
+        <TouchableOpacity onPress={onClose} style={styles.viewAllButton}>
+          <Text style={[styles.viewAllText, { color: colors.text.tertiary }]}>
+            Come back tomorrow
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Render Scheduling Feature UI
+  const renderSchedulingContent = () => (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      {/* Close button */}
+      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+        <Text style={[styles.closeText, { color: colors.text.secondary }]}>✕</Text>
+      </TouchableOpacity>
+
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.lockIcon}>📅</Text>
+        <Text style={[styles.title, { color: colors.text.primary }]}>
+          Premium Feature
+        </Text>
+        <Text style={[styles.activityName, { color: colors.text.secondary }]}>
+          Scheduling activities requires Premium
+        </Text>
+      </View>
+
+      {/* Premium Lifetime Option */}
+      <View style={styles.options}>
+        <View
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: colors.primary.light,
+              borderColor: colors.primary.main,
+            },
+          ]}
+        >
+          {/* Best Value badge */}
+          <View style={[styles.bestValueBadge, { backgroundColor: colors.secondary.main }]}>
+            <Text style={styles.bestValueText}>BEST VALUE</Text>
+          </View>
+
+          <View style={styles.optionHeader}>
+            <View style={[styles.optionIconContainer, { backgroundColor: colors.primary.main + '30' }]}>
+              <Text style={styles.optionEmoji}>{PREMIUM_LIFETIME.emoji}</Text>
+            </View>
+            <View style={styles.optionInfo}>
+              <Text style={[styles.optionName, { color: colors.text.primary }]}>
+                {PREMIUM_LIFETIME.name}
+              </Text>
+              <Text style={[styles.optionDescription, { color: colors.text.secondary }]}>
+                Unlock all premium features
+              </Text>
+            </View>
+          </View>
+
+          {/* Feature list */}
+          <View style={styles.featureList}>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>✓</Text>
+              <Text style={[styles.featureText, { color: colors.text.primary }]}>
+                Activity scheduling & reminders
+              </Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>✓</Text>
+              <Text style={[styles.featureText, { color: colors.text.primary }]}>
+                Unlimited daily recommendations
+              </Text>
+            </View>
+            <View style={styles.featureItem}>
+              <Text style={styles.featureIcon}>✓</Text>
+              <Text style={[styles.featureText, { color: colors.text.primary }]}>
+                All activity packs included
+              </Text>
+            </View>
+          </View>
+
+          <Text style={[styles.optionPrice, { color: colors.primary.main }]}>
+            {PREMIUM_LIFETIME.priceLabel}
+          </Text>
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={styles.footer}>
+        <Button
+          onPress={handlePurchaseLifetime}
+          variant="primary"
+          fullWidth
+          size="lg"
+          loading={purchaseLoading}
+          disabled={purchaseLoading}
+        >
+          Get Premium - {PREMIUM_LIFETIME.priceLabel}
+        </Button>
+
+        <TouchableOpacity onPress={onClose} style={styles.viewAllButton}>
+          <Text style={[styles.viewAllText, { color: colors.text.tertiary }]}>
+            Maybe later
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+
+  // Render Activity Lock UI (existing behavior)
+  const renderActivityLockContent = () => (
+    <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
+      {/* Close button */}
+      <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+        <Text style={[styles.closeText, { color: colors.text.secondary }]}>✕</Text>
+      </TouchableOpacity>
+
+      {/* Lock icon and title */}
+      <View style={styles.header}>
+        <Text style={styles.lockIcon}>🔒</Text>
+        <Text style={[styles.title, { color: colors.text.primary }]}>
+          Unlock This Activity
+        </Text>
+        {activity && (
+          <Text style={[styles.activityName, { color: colors.text.secondary }]}>
+            "{activity.title}" is part of the {pack.name}
+          </Text>
+        )}
+      </View>
+
+      {/* Options */}
+      <View style={styles.options}>
+        {/* Pack option */}
+        <TouchableOpacity
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: selectedOption === 'pack' ? pack.color + '15' : colors.surface.secondary,
+              borderColor: selectedOption === 'pack' ? pack.color : colors.border.light,
+            },
+          ]}
+          onPress={() => setSelectedOption('pack')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.optionHeader}>
+            <View style={[styles.optionIconContainer, { backgroundColor: pack.color + '30' }]}>
+              <Text style={styles.optionEmoji}>{pack.emoji}</Text>
+            </View>
+            <View style={styles.optionInfo}>
+              <Text style={[styles.optionName, { color: colors.text.primary }]}>
+                {pack.name}
+              </Text>
+              <Text style={[styles.optionDescription, { color: colors.text.secondary }]}>
+                {pack.description}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.optionPrice, { color: pack.color }]}>
+            {pack.priceLabel}
+          </Text>
+          {selectedOption === 'pack' && (
+            <View style={[styles.selectedIndicator, { backgroundColor: pack.color }]} />
+          )}
+        </TouchableOpacity>
+
+        {/* Divider with "or" */}
+        <View style={styles.orDivider}>
+          <View style={[styles.orLine, { backgroundColor: colors.border.light }]} />
+          <Text style={[styles.orText, { color: colors.text.tertiary }]}>or</Text>
+          <View style={[styles.orLine, { backgroundColor: colors.border.light }]} />
+        </View>
+
+        {/* Lifetime option */}
+        <TouchableOpacity
+          style={[
+            styles.optionCard,
+            {
+              backgroundColor: selectedOption === 'lifetime' ? colors.primary.light : colors.surface.secondary,
+              borderColor: selectedOption === 'lifetime' ? colors.primary.main : colors.border.light,
+            },
+          ]}
+          onPress={() => setSelectedOption('lifetime')}
+          activeOpacity={0.7}
+        >
+          {/* Best Value badge */}
+          <View style={[styles.bestValueBadge, { backgroundColor: colors.secondary.main }]}>
+            <Text style={styles.bestValueText}>BEST VALUE</Text>
+          </View>
+
+          <View style={styles.optionHeader}>
+            <View style={[styles.optionIconContainer, { backgroundColor: colors.primary.light }]}>
+              <Text style={styles.optionEmoji}>{PREMIUM_LIFETIME.emoji}</Text>
+            </View>
+            <View style={styles.optionInfo}>
+              <Text style={[styles.optionName, { color: colors.text.primary }]}>
+                {PREMIUM_LIFETIME.name}
+              </Text>
+              <Text style={[styles.optionDescription, { color: colors.text.secondary }]}>
+                All packs + unlimited features forever
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.optionPrice, { color: colors.primary.main }]}>
+            {PREMIUM_LIFETIME.priceLabel}
+          </Text>
+          {selectedOption === 'lifetime' && (
+            <View style={[styles.selectedIndicator, { backgroundColor: colors.primary.main }]} />
+          )}
+        </TouchableOpacity>
+      </View>
+
+      {/* Purchase button */}
+      <View style={styles.footer}>
+        <Button
+          onPress={selectedOption === 'pack' ? handlePurchasePack : handlePurchaseLifetime}
+          variant="primary"
+          fullWidth
+          size="lg"
+          loading={purchaseLoading}
+          disabled={purchaseLoading}
+          style={selectedOption === 'pack' ? { backgroundColor: pack.color } : {}}
+        >
+          {selectedOption === 'pack'
+            ? `Get ${pack.name} - ${pack.priceLabel}`
+            : `Get Premium Lifetime - ${PREMIUM_LIFETIME.priceLabel}`}
+        </Button>
+
+        <TouchableOpacity onPress={handleGoToStore} style={styles.viewAllButton}>
+          <Text style={[styles.viewAllText, { color: colors.text.tertiary }]}>
+            View all packs in Store
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
 
   return (
-    <Modal visible={visible} animationType="slide" transparent presentationStyle="overFullScreen">
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+    >
       <View style={[styles.overlay, { backgroundColor: 'rgba(0,0,0,0.6)' }]}>
-        <View style={[styles.container, { backgroundColor: colors.background.primary }]}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={[styles.closeText, { color: colors.text.secondary }]}>✕</Text>
-            </TouchableOpacity>
-            <Text style={[styles.title, { color: colors.text.primary }]}>Upgrade Your Plan</Text>
-            {blockedFeature && (
-              <Text style={[styles.subtitle, { color: colors.text.secondary }]}>
-                Unlock {FEATURE_DESCRIPTIONS[blockedFeature]?.name || blockedFeature} and more
-              </Text>
-            )}
-          </View>
-
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-            {/* Tier Selection */}
-            <View style={styles.tierSelection}>
-              {tiers.map((tier) => (
-                <TouchableOpacity
-                  key={tier.id}
-                  style={[
-                    styles.tierCard,
-                    {
-                      backgroundColor:
-                        selectedTier === tier.id ? colors.primary.light : colors.surface.secondary,
-                      borderColor:
-                        selectedTier === tier.id ? colors.primary.main : colors.border.light,
-                    },
-                  ]}
-                  onPress={() => setSelectedTier(tier.id)}
-                  activeOpacity={0.7}
-                >
-                  {tier.id === 'plus' && (
-                    <View style={[styles.popularBadge, { backgroundColor: colors.primary.main }]}>
-                      <Text style={styles.popularText}>POPULAR</Text>
-                    </View>
-                  )}
-                  <Text style={[styles.tierName, { color: colors.text.primary }]}>{tier.name}</Text>
-                  <Text style={[styles.tierPrice, { color: colors.primary.main }]}>
-                    {tier.priceLabel}
-                  </Text>
-                  <Text style={[styles.tierDescription, { color: colors.text.secondary }]}>
-                    {tier.description}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Feature Comparison */}
-            <Card variant="outlined" style={styles.comparisonCard}>
-              <Text style={[styles.comparisonTitle, { color: colors.text.primary }]}>
-                What you'll get
-              </Text>
-              <View style={styles.comparisonHeader}>
-                <Text style={[styles.comparisonLabel, { color: colors.text.tertiary }]}>Free</Text>
-                <Text style={[styles.comparisonLabel, { color: colors.primary.main }]}>
-                  {SUBSCRIPTION_TIERS[selectedTier]?.name}
-                </Text>
-              </View>
-              {renderFeatureComparison()}
-            </Card>
-
-            {/* Trust Badges */}
-            <View style={styles.trustBadges}>
-              <View style={styles.trustBadge}>
-                <Text style={styles.trustIcon}>🔒</Text>
-                <Text style={[styles.trustText, { color: colors.text.secondary }]}>
-                  Secure Payment
-                </Text>
-              </View>
-              <View style={styles.trustBadge}>
-                <Text style={styles.trustIcon}>↩️</Text>
-                <Text style={[styles.trustText, { color: colors.text.secondary }]}>
-                  Cancel Anytime
-                </Text>
-              </View>
-              <View style={styles.trustBadge}>
-                <Text style={styles.trustIcon}>⚡</Text>
-                <Text style={[styles.trustText, { color: colors.text.secondary }]}>
-                  Instant Access
-                </Text>
-              </View>
-            </View>
-          </ScrollView>
-
-          {/* Footer */}
-          <View style={[styles.footer, { borderTopColor: colors.border.light }]}>
-            <Button onPress={handlePurchase} fullWidth size="lg" disabled={processing}>
-              {processing
-                ? 'Processing...'
-                : `Upgrade to ${SUBSCRIPTION_TIERS[selectedTier]?.name}`}
-            </Button>
-            <TouchableOpacity onPress={onClose} style={styles.restoreButton}>
-              <Text style={[styles.restoreText, { color: colors.text.tertiary }]}>
-                Restore Purchases
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+        {isDailyLimitBlock
+          ? renderDailyLimitContent()
+          : isSchedulingBlock
+            ? renderSchedulingContent()
+            : renderActivityLockContent()}
       </View>
     </Modal>
   );
@@ -198,13 +435,10 @@ const styles = StyleSheet.create({
   container: {
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    maxHeight: '90%',
-  },
-  header: {
-    alignItems: 'center',
-    paddingTop: 16,
-    paddingBottom: 20,
     paddingHorizontal: 24,
+    paddingTop: 16,
+    paddingBottom: 40,
+    maxHeight: '85%',
   },
   closeButton: {
     position: 'absolute',
@@ -215,152 +449,133 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 1,
   },
   closeText: {
     fontSize: 20,
     fontWeight: '600',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
+  header: {
+    alignItems: 'center',
     marginTop: 8,
+    marginBottom: 24,
   },
-  subtitle: {
+  lockIcon: {
+    fontSize: 48,
+    marginBottom: 12,
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  activityName: {
     fontSize: 14,
-    marginTop: 8,
     textAlign: 'center',
   },
-  content: {
-    paddingHorizontal: 24,
+  options: {
+    marginBottom: 24,
   },
-  tierSelection: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  tierCard: {
-    flex: 1,
+  optionCard: {
     padding: 16,
     borderRadius: 16,
     borderWidth: 2,
-    alignItems: 'center',
     position: 'relative',
     overflow: 'hidden',
   },
-  popularBadge: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    left: 0,
-    paddingVertical: 4,
-    alignItems: 'center',
-  },
-  popularText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: '700',
-  },
-  tierName: {
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 16,
-  },
-  tierPrice: {
-    fontSize: 20,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-  tierDescription: {
-    fontSize: 11,
-    textAlign: 'center',
-    marginTop: 8,
-  },
-  comparisonCard: {
-    padding: 16,
-    marginBottom: 20,
-  },
-  comparisonTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 12,
-  },
-  comparisonHeader: {
+  optionHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 24,
+    alignItems: 'center',
     marginBottom: 8,
-    paddingRight: 8,
   },
-  comparisonLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    width: 40,
-    textAlign: 'center',
-  },
-  featureRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  optionIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
-    paddingVertical: 8,
+    justifyContent: 'center',
+    marginRight: 12,
   },
-  featureInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  optionEmoji: {
+    fontSize: 24,
+  },
+  optionInfo: {
     flex: 1,
   },
-  featureIcon: {
+  optionName: {
     fontSize: 16,
-    marginRight: 8,
-  },
-  featureName: {
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  featureValues: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  featureValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    width: 40,
-    textAlign: 'center',
-  },
-  arrow: {
-    fontSize: 12,
-    color: '#999',
-  },
-  improvedValue: {
     fontWeight: '700',
   },
-  trustBadges: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 20,
+  optionDescription: {
+    fontSize: 12,
+    marginTop: 2,
   },
-  trustBadge: {
-    alignItems: 'center',
-  },
-  trustIcon: {
+  optionPrice: {
     fontSize: 20,
-    marginBottom: 4,
+    fontWeight: '800',
+    textAlign: 'right',
   },
-  trustText: {
-    fontSize: 11,
-    fontWeight: '500',
+  selectedIndicator: {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+    width: 4,
+    borderTopLeftRadius: 16,
+    borderBottomLeftRadius: 16,
+  },
+  orDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 16,
+  },
+  orLine: {
+    flex: 1,
+    height: 1,
+  },
+  orText: {
+    marginHorizontal: 16,
+    fontSize: 12,
+  },
+  bestValueBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  bestValueText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  featureList: {
+    marginTop: 8,
+    marginBottom: 12,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  featureIcon: {
+    fontSize: 14,
+    marginRight: 8,
+    color: '#22c55e',
+  },
+  featureText: {
+    fontSize: 13,
   },
   footer: {
-    padding: 24,
-    paddingBottom: 40,
-    borderTopWidth: 1,
+    marginTop: 8,
   },
-  restoreButton: {
+  viewAllButton: {
     alignItems: 'center',
-    marginTop: 12,
+    marginTop: 16,
   },
-  restoreText: {
-    fontSize: 12,
+  viewAllText: {
+    fontSize: 13,
   },
 });
 

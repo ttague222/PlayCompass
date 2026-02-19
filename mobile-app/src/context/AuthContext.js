@@ -2,11 +2,13 @@
  * PlayCompass Auth Context
  *
  * Manages Firebase authentication state and provides auth methods
+ *
+ * NOTE: Real-time Firestore listener has been REMOVED to prevent race conditions
+ * when adding kids. Profile is fetched once on auth, and kids are updated locally.
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
 import {
   signInAnonymously as authSignInAnonymously,
   signInWithGoogle as authSignInWithGoogle,
@@ -18,6 +20,7 @@ import {
   deleteAccount as authDeleteAccount,
 } from '../services/authService';
 import { resetUsageStats } from '../services/subscriptionService';
+import { registerPushToken, unregisterPushToken } from '../services/pushNotificationService';
 import { Analytics, setUser as setCrashUser, addBreadcrumb } from '../services';
 
 const AuthContext = createContext(null);
@@ -28,12 +31,14 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [initializing, setInitializing] = useState(true);
   const [authError, setAuthError] = useState(null);
-  // Track if account deletion is in progress to prevent listener errors
+  // Local kids state - updated manually, no real-time listener
+  const [kidsOverride, setKidsOverride] = useState(null);
+  // Track if account deletion is in progress
   const isDeletingAccount = useRef(false);
-  // Store profile unsubscribe function so we can call it during deletion
-  const profileUnsubscribeRef = useRef(null);
+  // Store user ID for profile operations
+  const userIdRef = useRef(null);
 
-  // Listen for auth state changes
+  // Listen for auth state changes and fetch profile ONCE (no real-time listener)
   useEffect(() => {
     const unsubscribe = auth().onAuthStateChanged(async (authUser) => {
       // Skip processing if we're in the middle of deleting the account
@@ -44,7 +49,10 @@ export const AuthProvider = ({ children }) => {
       setUser(authUser);
 
       if (authUser) {
-        // Fetch user profile from Firestore
+        // Store user ID
+        userIdRef.current = authUser.uid;
+
+        // Fetch user profile ONCE from Firestore (no real-time listener)
         const result = await getUserProfile(authUser.uid);
         if (result.success) {
           setUserProfile(result.profile);
@@ -52,8 +60,17 @@ export const AuthProvider = ({ children }) => {
         // Set user context for crash reporting
         setCrashUser(authUser);
         addBreadcrumb('User authenticated', 'auth', { isAnonymous: authUser.isAnonymous });
+
+        // Register push notification token
+        registerPushToken(authUser.uid).then((tokenResult) => {
+          if (tokenResult.success) {
+            addBreadcrumb('Push token registered', 'notification');
+          }
+        });
       } else {
+        userIdRef.current = null;
         setUserProfile(null);
+        setKidsOverride(null);
         setCrashUser(null);
       }
 
@@ -66,44 +83,8 @@ export const AuthProvider = ({ children }) => {
     return unsubscribe;
   }, [initializing]);
 
-  // Listen for profile changes in real-time
-  useEffect(() => {
-    if (!user?.uid) return;
-
-    const unsubscribe = firestore()
-      .collection('users')
-      .doc(user.uid)
-      .onSnapshot(
-        (doc) => {
-          // Skip processing if we're deleting the account
-          if (isDeletingAccount.current) {
-            return;
-          }
-          if (doc.exists) {
-            setUserProfile(doc.data());
-          }
-          // If doc doesn't exist, the profile will be created by authService
-          // and this listener will pick it up when it's ready
-        },
-        (error) => {
-          // Skip errors during account deletion
-          if (isDeletingAccount.current) {
-            return;
-          }
-          // Ignore "not-found" errors - document may not exist yet for new users
-          if (error.code === 'firestore/not-found' || error.code === 'not-found') {
-            console.log('User profile not found yet, waiting for creation...');
-            return;
-          }
-          console.error('Profile listener error:', error);
-        }
-      );
-
-    // Store reference so we can unsubscribe during account deletion
-    profileUnsubscribeRef.current = unsubscribe;
-
-    return unsubscribe;
-  }, [user?.uid]);
+  // NO REAL-TIME LISTENER - Profile is fetched once on auth
+  // Kids are updated locally via setKidsLocally
 
   // Sign in anonymously
   const signInAnonymously = useCallback(async () => {
@@ -188,6 +169,12 @@ export const AuthProvider = ({ children }) => {
     setLoading(true);
     setAuthError(null);
     addBreadcrumb('User signing out', 'auth');
+
+    // Unregister push token before signing out
+    if (user?.uid) {
+      await unregisterPushToken(user.uid);
+    }
+
     const result = await authSignOut();
     if (result.success) {
       Analytics.signOut();
@@ -196,7 +183,7 @@ export const AuthProvider = ({ children }) => {
     }
     setLoading(false);
     return result;
-  }, []);
+  }, [user?.uid]);
 
   // Delete account
   const deleteAccount = useCallback(async () => {
@@ -204,19 +191,14 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
 
     try {
-      // Set flag to prevent listener errors during deletion
+      // Set flag to prevent errors during deletion
       isDeletingAccount.current = true;
-
-      // Unsubscribe from profile listener before deletion
-      if (profileUnsubscribeRef.current) {
-        profileUnsubscribeRef.current();
-        profileUnsubscribeRef.current = null;
-      }
 
       // Clear profile state immediately
       setUserProfile(null);
+      setKidsOverride(null);
 
-      // Small delay to ensure listener is fully detached
+      // Small delay to ensure state is cleared
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const result = await authDeleteAccount();
@@ -249,6 +231,25 @@ export const AuthProvider = ({ children }) => {
     setAuthError(null);
   }, []);
 
+  // Set kids locally - simple state update, no real-time listener to worry about
+  const setKidsLocally = useCallback((newKids) => {
+    console.log('[AuthContext] Setting kids locally:', newKids?.length || 0);
+    setKidsOverride(newKids);
+  }, []);
+
+  // Refresh profile from Firestore (call manually when needed)
+  const refreshProfile = useCallback(async () => {
+    if (!userIdRef.current) return { success: false, error: 'No user logged in' };
+
+    console.log('[AuthContext] Refreshing profile from Firestore');
+    const result = await getUserProfile(userIdRef.current);
+    if (result.success) {
+      setUserProfile(result.profile);
+      setKidsOverride(null); // Clear override to use fresh data
+    }
+    return result;
+  }, []);
+
   const value = {
     // User state
     user,
@@ -265,8 +266,8 @@ export const AuthProvider = ({ children }) => {
     displayName: user?.displayName ?? userProfile?.displayName ?? null,
     photoURL: user?.photoURL ?? userProfile?.photoURL ?? null,
 
-    // Profile data shortcuts
-    kids: userProfile?.kids ?? [],
+    // Profile data shortcuts - use kidsOverride if set, otherwise use profile
+    kids: kidsOverride ?? userProfile?.kids ?? [],
     subscription: userProfile?.subscription ?? { tier: 'free' },
     preferences: userProfile?.preferences ?? {},
 
@@ -279,6 +280,8 @@ export const AuthProvider = ({ children }) => {
     signOut,
     deleteAccount,
     clearError,
+    setKidsLocally,
+    refreshProfile,
   };
 
   return (
