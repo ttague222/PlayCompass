@@ -5,10 +5,9 @@
  * with "-Wnon-modular-include-in-framework-module" errors because RNFBApp
  * imports React headers that aren't modular-safe in static framework mode.
  *
- * This plugin patches the Podfile to:
- * 1. Set $RNFirebaseAsStaticFramework = true
- * 2. Set CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES
- *    for ALL pod targets (not just project-level)
+ * This plugin patches the generated Podfile post_install hook to set
+ * CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES = YES
+ * for ALL pod targets, which relaxes the strict modular header check.
  *
  * See: https://github.com/expo/expo/issues/39607
  * See: https://github.com/invertase/react-native-firebase/issues/8657
@@ -27,18 +26,10 @@ function withFirebaseModularHeaders(config) {
       );
       let podfile = fs.readFileSync(podfilePath, "utf8");
 
-      // 1. Add $RNFirebaseAsStaticFramework = true before use_react_native!
-      if (!podfile.includes("$RNFirebaseAsStaticFramework")) {
-        podfile = podfile.replace(
-          /use_react_native!/,
-          `$RNFirebaseAsStaticFramework = true\n  use_react_native!`
-        );
-      }
-
-      // 2. Add CLANG fix inside post_install block (target-level for all targets)
-      //    Previous attempt used regex on react_native_post_install() which spans
-      //    multiple lines and didn't match. post_install do |installer| is always
-      //    on a single line, so this regex reliably matches.
+      // Add CLANG fix inside post_install block (target-level for all targets)
+      // Matches "post_install do |installer|" which is always on a single line
+      // in the Expo-generated Podfile (unlike react_native_post_install which
+      // spans multiple lines and broke the previous regex attempt).
       if (
         !podfile.includes(
           "CLANG_ALLOW_NON_MODULAR_INCLUDES_IN_FRAMEWORK_MODULES"
