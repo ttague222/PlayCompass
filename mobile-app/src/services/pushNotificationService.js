@@ -81,7 +81,7 @@ export const getExpoPushToken = async () => {
  * Register the device's push token with Firestore
  * This allows the server to send push notifications to this device
  */
-export const registerPushToken = async (userId) => {
+export const registerPushToken = async (userId, _retryCount = 0) => {
   if (!firestore || !userId) {
     return { success: false, error: 'Firestore or userId not available' };
   }
@@ -114,7 +114,14 @@ export const registerPushToken = async (userId) => {
     console.log('[PushNotificationService] Push token registered successfully');
     return { success: true, token: pushToken };
   } catch (error) {
-    console.error('[PushNotificationService] Error registering push token:', error);
+    // Retry once after a short delay — auth token may not have propagated to Firestore yet
+    if (_retryCount < 1 && error.code === 'firestore/permission-denied') {
+      console.log('[PushNotificationService] Permission denied, retrying in 3s...');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return registerPushToken(userId, _retryCount + 1);
+    }
+    // Non-fatal: token registration is best-effort, don't spam error logs
+    console.log('[PushNotificationService] Could not register push token:', error.message || error);
     return { success: false, error: error.message };
   }
 };

@@ -265,7 +265,7 @@ const ProgressScreen = ({ navigation }) => {
               <Button
                 variant="primary"
                 size="sm"
-                onPress={() => navigation.navigate('Subscription')}
+                onPress={() => navigation.navigate('Store')}
               >
                 Upgrade
               </Button>

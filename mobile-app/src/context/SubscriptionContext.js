@@ -5,7 +5,7 @@
  * feature access checks to the entire app.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from './AuthContext';
 import {
   ACTIVITY_PACKS,
@@ -38,6 +38,9 @@ import {
 } from '../services/purchaseService';
 
 const SubscriptionContext = createContext(null);
+
+// Pre-compute stable reference for static data (getAllPacks creates new array each call)
+const ALL_PACKS = getAllPacks();
 
 export const SubscriptionProvider = ({ children }) => {
   const { user, isAuthenticated } = useAuth();
@@ -297,7 +300,13 @@ export const SubscriptionProvider = ({ children }) => {
     }
   }, [user?.uid]);
 
-  const value = {
+  // Stabilize the nested subscription object to prevent new reference on every render
+  const subscriptionInfo = useMemo(
+    () => ({ tier, ownedPacks, hasPremiumLifetime }),
+    [tier, ownedPacks, hasPremiumLifetime]
+  );
+
+  const value = useMemo(() => ({
     // Purchase state
     purchases,
     ownedPacks,
@@ -313,13 +322,13 @@ export const SubscriptionProvider = ({ children }) => {
     tierConfig,
     effectiveTier: tier,
 
-    // Pack info
+    // Pack info (static module-level references - never change)
     activityPacks: ACTIVITY_PACKS,
     premiumLifetime: PREMIUM_LIFETIME,
-    allPacks: getAllPacks(),
+    allPacks: ALL_PACKS,
     allTiers: TIERS,
 
-    // Feature checks
+    // Feature checks (useCallback-wrapped, stable references)
     hasPackAccess: hasPackAccessFn,
     isActivityUnlocked: isActivityUnlockedFn,
     checkFeature,
@@ -328,19 +337,22 @@ export const SubscriptionProvider = ({ children }) => {
     checkCanGetRecommendations,
     getPackForActivity,
 
-    // Actions
+    // Actions (useCallback-wrapped, stable references)
     recordRecommendationUsage,
     getSuggestion,
     purchasePack,
     purchaseLifetime,
     restorePurchases,
 
-    // Legacy aliases (for backwards compatibility)
-    subscription: { tier, ownedPacks, hasPremiumLifetime },
-    isInTrial: false,
-    daysRemaining: 0,
-    trialExpired: true,
-  };
+    // Legacy alias
+    subscription: subscriptionInfo,
+  }), [
+    purchases, ownedPacks, hasPremiumLifetime, isPremium, loading, purchaseLoading,
+    usage, offerings, tier, tierConfig, subscriptionInfo,
+    hasPackAccessFn, isActivityUnlockedFn, checkFeature, checkCanAddKid,
+    checkCanGetRecommendations, getPackForActivity,
+    recordRecommendationUsage, getSuggestion, purchasePack, purchaseLifetime, restorePurchases,
+  ]);
 
   return (
     <SubscriptionContext.Provider value={value}>{children}</SubscriptionContext.Provider>

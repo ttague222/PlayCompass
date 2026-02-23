@@ -43,7 +43,7 @@ const ProfileScreen = () => {
     kids,
   } = useAuth();
   const { colors, isDark, toggleTheme, themeMode } = useTheme();
-  const { subscription, usage } = useSubscription();
+  const { isPremium, usage } = useSubscription();
   const insets = useSafeAreaInsets();
   const [actionLoading, setActionLoading] = useState(null);
 
@@ -207,10 +207,10 @@ const ProfileScreen = () => {
         </View>
         <TouchableOpacity
           style={styles.statItem}
-          onPress={() => navigation.navigate('Subscription')}
+          onPress={() => navigation.navigate('Store')}
         >
           <Text style={[styles.statValue, { color: colors.success.main }]}>
-            {subscription?.tier === 'plus' ? 'Plus' : subscription?.tier === 'family' ? 'Family' : 'Free'}
+            {isPremium ? 'Premium' : 'Free'}
           </Text>
           <Text style={[styles.statLabel, { color: colors.text.secondary }]}>
             Plan →

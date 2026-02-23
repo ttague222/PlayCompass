@@ -33,7 +33,7 @@ const TimeSelectScreen = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { kids } = useKids();
-  const { usage, checkCanGetRecommendations, effectiveTier, allTiers, checkFeature } = useSubscription();
+  const { usage, checkCanGetRecommendations, hasPremiumLifetime, checkFeature } = useSubscription();
   const insets = useSafeAreaInsets();
 
   const [selectedDuration, setSelectedDuration] = useState(null);
@@ -97,7 +97,7 @@ const TimeSelectScreen = () => {
   const currentSeason = getCurrentSeason();
   const seasonEmojis = { spring: '🌸', summer: '☀️', fall: '🍂', winter: '❄️' };
 
-  // Check feature availability (available during trial via effectiveTier)
+  // Check feature availability
   const hasWeatherFeature = checkFeature('weatherAware');
   const hasSeasonalFeature = checkFeature('seasonalActivities');
 
@@ -136,16 +136,14 @@ const TimeSelectScreen = () => {
     // Check recommendation limit
     const result = await checkCanGetRecommendations();
     if (!result.allowed) {
-      const nextTier = effectiveTier === 'free' ? allTiers.plus : effectiveTier === 'plus' ? allTiers.family : null;
-      const upgradeMessage = nextTier
-        ? `\n\nUpgrade to ${nextTier.name} (${nextTier.priceLabel}) for ${nextTier.features.dailyRecommendations === 'unlimited' ? 'unlimited' : nextTier.features.dailyRecommendations} daily recommendations.`
-        : '';
       Alert.alert(
         'Daily Limit Reached',
-        `You've used all ${result.limit} recommendations for today. Come back tomorrow for more!${upgradeMessage}`,
+        `You've used all ${result.limit} recommendations for today. Come back tomorrow for more!${
+          !hasPremiumLifetime ? '\n\nUpgrade to Premium for unlimited daily recommendations.' : ''
+        }`,
         [
           { text: 'OK', style: 'cancel' },
-          ...(nextTier ? [{ text: 'View Plans', onPress: () => navigation.navigate('Subscription') }] : []),
+          ...(!hasPremiumLifetime ? [{ text: 'Upgrade', onPress: () => navigation.navigate('Store') }] : []),
         ]
       );
       return;
@@ -186,16 +184,14 @@ const TimeSelectScreen = () => {
     // Double-check recommendation limit
     const result = await checkCanGetRecommendations();
     if (!result.allowed) {
-      const nextTier = effectiveTier === 'free' ? allTiers.plus : effectiveTier === 'plus' ? allTiers.family : null;
-      const upgradeMessage = nextTier
-        ? `\n\nUpgrade to ${nextTier.name} (${nextTier.priceLabel}) for ${nextTier.features.dailyRecommendations === 'unlimited' ? 'unlimited' : nextTier.features.dailyRecommendations} daily recommendations.`
-        : '';
       Alert.alert(
         'Daily Limit Reached',
-        `You've used all ${result.limit} recommendations for today. Come back tomorrow for more!${upgradeMessage}`,
+        `You've used all ${result.limit} recommendations for today. Come back tomorrow for more!${
+          !hasPremiumLifetime ? '\n\nUpgrade to Premium for unlimited daily recommendations.' : ''
+        }`,
         [
           { text: 'OK', style: 'cancel' },
-          ...(nextTier ? [{ text: 'View Plans', onPress: () => navigation.navigate('Subscription') }] : []),
+          ...(!hasPremiumLifetime ? [{ text: 'Upgrade', onPress: () => navigation.navigate('Store') }] : []),
         ]
       );
       return;
@@ -253,7 +249,7 @@ const TimeSelectScreen = () => {
                     : colors.primary.light,
                 },
               ]}
-              onPress={() => navigation.navigate('Subscription')}
+              onPress={() => navigation.navigate('Store')}
               activeOpacity={0.8}
             >
               <Text style={styles.usageIcon}>
@@ -275,7 +271,7 @@ const TimeSelectScreen = () => {
                   ? 'Unlimited recommendations'
                   : `${usage.recommendations.remaining} of ${usage.recommendations.limit} recommendations left today`}
               </Text>
-              {effectiveTier === 'free' && (
+              {!hasPremiumLifetime && (
                 <Text style={[styles.upgradeHint, { color: colors.primary.main }]}>
                   Upgrade →
                 </Text>
@@ -312,7 +308,7 @@ const TimeSelectScreen = () => {
               ) : (
                 <TouchableOpacity
                   style={[styles.weatherToggle, { backgroundColor: colors.surface.tertiary }]}
-                  onPress={() => navigation.navigate('Subscription')}
+                  onPress={() => navigation.navigate('Store')}
                 >
                   <Text style={[styles.weatherToggleText, { color: colors.text.tertiary }]}>
                     🔒 Plus
@@ -331,7 +327,7 @@ const TimeSelectScreen = () => {
               {!hasSeasonalFeature && (
                 <TouchableOpacity
                   style={[styles.plusBadge, { backgroundColor: colors.primary.light }]}
-                  onPress={() => navigation.navigate('Subscription')}
+                  onPress={() => navigation.navigate('Store')}
                 >
                   <Text style={[styles.plusBadgeText, { color: colors.primary.dark }]}>
                     🔒 Plus
@@ -356,7 +352,7 @@ const TimeSelectScreen = () => {
               </Chip>
               <Chip
                 selected={hasSeasonalFeature && seasonalFilter === 'current'}
-                onPress={() => hasSeasonalFeature ? setSeasonalFilter('current') : navigation.navigate('Subscription')}
+                onPress={() => hasSeasonalFeature ? setSeasonalFilter('current') : navigation.navigate('Store')}
                 style={[styles.chip, !hasSeasonalFeature && styles.chipDisabled]}
               >
                 {seasonEmojis[currentSeason]} {currentSeason.charAt(0).toUpperCase() + currentSeason.slice(1)} Only

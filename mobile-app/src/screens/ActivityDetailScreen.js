@@ -21,7 +21,6 @@ import { useFavorites } from '../context/FavoritesContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import { Card, Button, IconButton, Badge, ScreenWrapper, StarRating, RatingModal, Paywall } from '../components';
 import { CATEGORIES, DURATIONS, ENERGY_LEVELS, MATERIALS, AGE_GROUPS } from '../data/activitySchema';
-import { isFeatureAvailable } from '../services/subscriptionService';
 import { shareActivityKitPDF, printActivityKit } from '../services/printService';
 import { getPackForActivity, getPackInfo } from '../data/activityPacks';
 
@@ -31,7 +30,7 @@ const ActivityDetailScreen = () => {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const { isFavorite, toggleFavorite, getActivityRating, saveRating } = useFavorites();
-  const { effectiveTier, isInTrial, isActivityUnlocked, hasPremiumLifetime, ownedPacks } = useSubscription();
+  const { isActivityUnlocked, hasPremiumLifetime, ownedPacks } = useSubscription();
 
   const { activity } = route.params || {};
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -45,8 +44,8 @@ const ActivityDetailScreen = () => {
   const packId = activity ? getPackForActivity(activity) : null;
   const packInfo = packId ? getPackInfo(packId) : null;
 
-  // Check if user has premium access for detailed instructions (uses effectiveTier for trial support)
-  const hasDetailedInstructions = isFeatureAvailable('detailedInstructions', effectiveTier) || hasPremiumLifetime;
+  // Check if user has premium access for detailed instructions
+  const hasDetailedInstructions = hasPremiumLifetime;
 
   if (!activity) {
     return null;
@@ -323,11 +322,6 @@ const ActivityDetailScreen = () => {
                 {!hasDetailedInstructions && (
                   <Badge variant="premium" size="sm">
                     <Text style={styles.premiumBadgeText}>Premium</Text>
-                  </Badge>
-                )}
-                {hasDetailedInstructions && isInTrial && (
-                  <Badge variant="secondary" size="sm" style={{ backgroundColor: colors.primary.main + '15' }}>
-                    <Text style={{ color: colors.primary.main, fontSize: 10, fontWeight: '600' }}>✨ Bonus Feature</Text>
                   </Badge>
                 )}
               </View>

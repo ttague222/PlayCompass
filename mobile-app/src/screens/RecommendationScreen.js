@@ -497,7 +497,7 @@ const RecommendationScreen = () => {
   const { colors, isDark } = useTheme();
   const { kids: allKids } = useKids();
   const { saveActivityToHistory } = useHistory();
-  const { recordRecommendationUsage, effectiveTier, isInTrial, isActivityUnlocked, hasPremiumLifetime, ownedPacks } = useSubscription();
+  const { recordRecommendationUsage, isActivityUnlocked, hasPremiumLifetime, ownedPacks } = useSubscription();
 
   const { duration, location, energy, materials, selectedKids: routeSelectedKids, surpriseActivity, weather, seasonFilter } = route.params || {};
 
@@ -600,7 +600,7 @@ const RecommendationScreen = () => {
           materials,
           season: seasonFilter === 'current' ? getCurrentSeason() : null,
           weather: weatherTag, // Pass weather tag (sunny, rainy, etc.) to API
-          subscriptionTier: effectiveTier || 'free',
+          subscriptionTier: hasPremiumLifetime ? 'premiumLifetime' : 'free',
           excludedActivityIds,
           count: 10,
         });
@@ -960,7 +960,7 @@ const RecommendationScreen = () => {
               {weather && (
                 <Badge variant="secondary" size="sm" style={[styles.premiumFeatureBadge, { backgroundColor: colors.primary.main + '15' }]}>
                   <Text style={{ color: colors.primary.main, fontSize: 11, fontWeight: '600' }}>
-                    🌦️ Weather-Aware {isInTrial && '✨'}
+                    🌦️ Weather-Aware
                   </Text>
                 </Badge>
               )}
@@ -968,7 +968,7 @@ const RecommendationScreen = () => {
               {currentActivity.season && currentActivity.season !== 'any' && (
                 <Badge variant="secondary" size="sm" style={[styles.seasonBadge, { backgroundColor: getSeasonColor(currentActivity.season) + '20' }]}>
                   <Text style={{ color: getSeasonColor(currentActivity.season), fontSize: 11, fontWeight: '600' }}>
-                    {getSeasonEmoji(currentActivity.season)} {currentActivity.season.charAt(0).toUpperCase() + currentActivity.season.slice(1)} {isInTrial && '✨'}
+                    {getSeasonEmoji(currentActivity.season)} {currentActivity.season.charAt(0).toUpperCase() + currentActivity.season.slice(1)}
                   </Text>
                 </Badge>
               )}

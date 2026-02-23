@@ -24,7 +24,7 @@ const TimeLocationStep = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const { colors } = useTheme();
-  const { usage, checkCanGetRecommendations, effectiveTier, hasPremiumLifetime } = useSubscription();
+  const { usage, checkCanGetRecommendations, hasPremiumLifetime } = useSubscription();
   const insets = useSafeAreaInsets();
 
   const { selectedKids } = route.params;

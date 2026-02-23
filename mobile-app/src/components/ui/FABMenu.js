@@ -41,6 +41,7 @@ const FABMenu = ({ onFindActivity }) => {
   // Using simple text icons instead of emojis for cleaner look
   const menuItems = [
     { id: 'settings', label: 'Settings', icon: '⚙', screen: 'Profile' },
+    { id: 'store', label: 'Store', icon: '🛍', screen: 'Store' },
     { id: 'kids', label: 'Kids', icon: '👤', screen: 'KidsList' },
     { id: 'saved', label: 'Saved', icon: '♡', screen: 'SavedActivities' },
     { id: 'schedule', label: 'Schedule', icon: '◫', screen: 'Schedule' },

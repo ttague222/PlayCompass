@@ -218,7 +218,7 @@ const FamilyScreen = ({ navigation }) => {
           </Text>
           <Button
             variant="primary"
-            onPress={() => navigation.navigate('Subscription')}
+            onPress={() => navigation.navigate('Store')}
             style={styles.upgradeButton}
           >
             Upgrade to Premium

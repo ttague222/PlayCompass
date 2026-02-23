@@ -28,7 +28,7 @@ const AddKidScreen = () => {
   const route = useRoute();
   const { colors } = useTheme();
   const { addKid, updateKid, removeKid, getKidById, canAddKid, maxKids, INTERESTS, KID_AVATARS, loading } = useKids();
-  const { effectiveTier, allTiers } = useSubscription();
+  const { isPremium, tierConfig } = useSubscription();
   const insets = useSafeAreaInsets();
 
   // Check if editing existing kid
@@ -71,16 +71,14 @@ const AddKidScreen = () => {
 
     // Check subscription limit for new kids
     if (!isEditing && !canAddKid) {
-      const nextTier = effectiveTier === 'free' ? allTiers.plus : effectiveTier === 'plus' ? allTiers.family : null;
-      const upgradeMessage = nextTier
-        ? `\n\nUpgrade to ${nextTier.name} (${nextTier.priceLabel}) for up to ${nextTier.features.maxKids} children.`
-        : '';
       Alert.alert(
         'Limit Reached',
-        `You've reached your limit of ${maxKids} children on your current plan.${upgradeMessage}`,
+        `You've reached your limit of ${maxKids} children on your current plan.${
+          !isPremium ? '\n\nUpgrade to Premium for up to 10 children.' : ''
+        }`,
         [
           { text: 'OK', style: 'cancel' },
-          ...(nextTier ? [{ text: 'View Plans', onPress: () => navigation.navigate('Subscription') }] : []),
+          ...(!isPremium ? [{ text: 'Upgrade', onPress: () => navigation.navigate('Store') }] : []),
         ]
       );
       return;

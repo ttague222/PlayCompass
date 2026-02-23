@@ -37,7 +37,7 @@ try {
 
 // RevenueCat API keys
 const REVENUECAT_API_KEYS = {
-  ios: 'appl_dYUYWoTgujFJiMXmAGHvpVgqLAP', // TODO: Replace with production iOS key
+  ios: 'appl_ZQsAyHCXHoPlZroOiaXTeKHbqpw',
   android: 'goog_lgSPiIvpocHRmPfRNoyMxvLIyga',
 };
 

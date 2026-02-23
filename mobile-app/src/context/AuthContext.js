@@ -7,7 +7,7 @@
  * when adding kids. Profile is fetched once on auth, and kids are updated locally.
  */
 
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import auth from '@react-native-firebase/auth';
 import {
   signInAnonymously as authSignInAnonymously,
@@ -250,7 +250,23 @@ export const AuthProvider = ({ children }) => {
     return result;
   }, []);
 
-  const value = {
+  // Stabilize derived values to prevent new object/array references on every render
+  const kids = useMemo(
+    () => kidsOverride ?? userProfile?.kids ?? [],
+    [kidsOverride, userProfile?.kids]
+  );
+
+  const subscription = useMemo(
+    () => userProfile?.subscription ?? { tier: 'free' },
+    [userProfile?.subscription]
+  );
+
+  const preferences = useMemo(
+    () => userProfile?.preferences ?? {},
+    [userProfile?.preferences]
+  );
+
+  const value = useMemo(() => ({
     // User state
     user,
     userProfile,
@@ -266,12 +282,12 @@ export const AuthProvider = ({ children }) => {
     displayName: user?.displayName ?? userProfile?.displayName ?? null,
     photoURL: user?.photoURL ?? userProfile?.photoURL ?? null,
 
-    // Profile data shortcuts - use kidsOverride if set, otherwise use profile
-    kids: kidsOverride ?? userProfile?.kids ?? [],
-    subscription: userProfile?.subscription ?? { tier: 'free' },
-    preferences: userProfile?.preferences ?? {},
+    // Profile data shortcuts - using pre-memoized stable references
+    kids,
+    subscription,
+    preferences,
 
-    // Auth methods
+    // Auth methods (all useCallback-wrapped, stable references)
     signInAnonymously,
     signInWithGoogle,
     signInWithEmail,
@@ -282,7 +298,12 @@ export const AuthProvider = ({ children }) => {
     clearError,
     setKidsLocally,
     refreshProfile,
-  };
+  }), [
+    user, userProfile, loading, initializing, authError,
+    kids, subscription, preferences,
+    signInAnonymously, signInWithGoogle, signInWithEmail, signUpWithEmail,
+    resetPassword, signOut, deleteAccount, clearError, setKidsLocally, refreshProfile,
+  ]);
 
   return (
     <AuthContext.Provider value={value}>

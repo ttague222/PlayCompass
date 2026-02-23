@@ -102,11 +102,11 @@ export const KidsProvider = ({ children }) => {
   const maxKids = kidLimitInfo.limit;
   const kidsRemaining = kidLimitInfo.remaining;
 
-  // Get age groups for all kids
-  const ageGroups = getAgeGroupsForKids(kids);
+  // Get age groups for all kids (memoized to prevent cascading re-renders)
+  const ageGroups = useMemo(() => getAgeGroupsForKids(kids), [kids]);
 
-  // Get combined interests
-  const combinedInterests = getCombinedInterests(kids);
+  // Get combined interests (memoized to prevent cascading re-renders)
+  const combinedInterests = useMemo(() => getCombinedInterests(kids), [kids]);
 
   // Get age range string (e.g., "3-8 years")
   const getAgeRangeString = useCallback(() => {
@@ -122,7 +122,7 @@ export const KidsProvider = ({ children }) => {
     return `${minAge}-${maxAge} years`;
   }, [kids]);
 
-  const value = {
+  const value = useMemo(() => ({
     // State
     kids,
     loading,
@@ -138,7 +138,7 @@ export const KidsProvider = ({ children }) => {
     ageGroups,
     combinedInterests,
 
-    // Methods
+    // Methods (useCallback-wrapped, stable references)
     addKid,
     updateKid,
     removeKid,
@@ -146,14 +146,19 @@ export const KidsProvider = ({ children }) => {
     getKidById,
     getAgeRangeString,
 
-    // Helpers
+    // Helpers (module-level import, stable reference)
     getAgeGroup,
 
-    // Constants
+    // Constants (module-level imports, stable references)
     AGE_GROUPS,
     INTERESTS,
     KID_AVATARS,
-  };
+  }), [
+    kids, loading, error,
+    canAddKid, maxKids, kidsRemaining, kidLimitInfo,
+    ageGroups, combinedInterests,
+    addKid, updateKid, removeKid, clearError, getKidById, getAgeRangeString,
+  ]);
 
   return (
     <KidsContext.Provider value={value}>

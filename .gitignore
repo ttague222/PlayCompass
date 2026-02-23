@@ -21,6 +21,10 @@ google-services.json
 GoogleService-Info.plist
 serviceAccountKey.json
 
+# Allow Firebase config in mobile-app (needed for EAS Build)
+!mobile-app/google-services.json
+!mobile-app/GoogleService-Info.plist
+
 # IDE
 .idea/
 .vscode/

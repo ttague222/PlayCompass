@@ -43,6 +43,9 @@ const HomeScreen = () => {
   const [heroEmoji, setHeroEmoji] = useState(getTimeBasedEmoji());
 
   // Check recommendation usage on mount and update emoji
+  // NOTE: Intentionally using [] deps - checkCanGetRecommendations calls setUsage()
+  // which triggers SubscriptionContext re-renders. Running this on every function
+  // reference change caused cascading state updates that crashed the app.
   useEffect(() => {
     const checkUsage = async () => {
       const result = await checkCanGetRecommendations();
@@ -52,7 +55,7 @@ const HomeScreen = () => {
 
     // Update emoji based on time of day
     setHeroEmoji(getTimeBasedEmoji());
-  }, [checkCanGetRecommendations]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleGetRecommendation = async () => {
     // If no kids, prompt to add first

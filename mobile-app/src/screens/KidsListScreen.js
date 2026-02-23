@@ -23,24 +23,8 @@ const KidsListScreen = () => {
   const navigation = useNavigation();
   const { colors } = useTheme();
   const { kids, canAddKid, maxKids, getAgeGroup, INTERESTS } = useKids();
-  const { effectiveTier, isPremium, allTiers } = useSubscription();
+  const { isPremium } = useSubscription();
   const insets = useSafeAreaInsets();
-
-  // Get upgrade info for users at their limit (uses effectiveTier for trial support)
-  const getUpgradeInfo = () => {
-    if (effectiveTier === 'free') {
-      return {
-        targetTier: allTiers.plus,
-        message: `Upgrade to ${allTiers.plus.name} for up to ${allTiers.plus.features.maxKids} children`,
-      };
-    } else if (effectiveTier === 'plus') {
-      return {
-        targetTier: allTiers.family,
-        message: `Upgrade to ${allTiers.family.name} for up to ${allTiers.family.features.maxKids} children`,
-      };
-    }
-    return null;
-  };
 
   const handleAddKid = () => {
     navigation.navigate('AddKid');
@@ -167,13 +151,13 @@ const KidsListScreen = () => {
                   <Text style={[styles.limitText, { color: colors.text.tertiary }]}>
                     You've reached your limit of {maxKids} {maxKids === 1 ? 'child' : 'children'}
                   </Text>
-                  {getUpgradeInfo() && (
+                  {!isPremium && (
                     <TouchableOpacity
                       style={[styles.upgradeButton, { backgroundColor: colors.primary.main }]}
-                      onPress={() => navigation.navigate('Subscription')}
+                      onPress={() => navigation.navigate('Store')}
                     >
                       <Text style={styles.upgradeButtonText}>
-                        {getUpgradeInfo().message}
+                        Upgrade to Premium for up to 10 children
                       </Text>
                     </TouchableOpacity>
                   )}
