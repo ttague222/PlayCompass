@@ -52,3 +52,7 @@ coverage/
 # Temp files
 *.log
 nul
+
+# Firebase config files (contain real API keys — use .example versions)
+google-services.json
+GoogleService-Info.plist
