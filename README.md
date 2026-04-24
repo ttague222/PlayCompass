@@ -4,7 +4,7 @@
 
 Finding the right activity for your kid — based on their age, interests, and energy level — takes more effort than it should. PlayCompass makes it effortless, surfacing personalized activity recommendations that parents can actually use.
 
-Live on **Android**.
+[![Google Play](https://img.shields.io/badge/Get_it_on-Google_Play-414141?style=for-the-badge&logo=google-play&logoColor=white)](https://play.google.com/store/apps/details?id=com.playcompass.app)
 
 ---
 
